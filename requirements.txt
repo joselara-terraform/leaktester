@@ -1,0 +1,21 @@
+# GPIO and Hardware Control
+gpiozero==1.6.2
+
+# Configuration Management
+PyYAML==6.0.1
+
+# GUI and Display
+matplotlib==3.7.2
+Pillow==10.0.0
+
+# SPI Communication for ADC
+spidev==3.5
+
+# I2C Communication
+smbus2==0.4.2
+
+# Additional dependencies for the system
+RPi.GPIO==0.7.1
+adafruit-circuitpython-ads1x15==2.2.19
+pandas==2.0.3
+numpy==1.24.3 
