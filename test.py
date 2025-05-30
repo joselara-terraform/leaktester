@@ -47,7 +47,7 @@ class ValveController:
 
 def main():
     # Replace with your actual GPIO pin numbers
-    controller = ValveController(extend_pin=17, retract_pin=27)
+    controller = ValveController(extend_pin=10, retract_pin=9)
     
     try:
         while True:
