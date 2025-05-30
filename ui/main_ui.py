@@ -18,12 +18,14 @@ from typing import Optional
 # Handle imports for both module use and standalone testing
 try:
     from ..controllers.pressure_calibration import PressureCalibration
+    from ..services.test_runner import TestRunner, TestConfig, TestPhase, TestResult
     from .test_button import TestButton
 except ImportError:
     import sys
     import os
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from controllers.pressure_calibration import PressureCalibration
+    from services.test_runner import TestRunner, TestConfig, TestPhase, TestResult
 
 def is_raspberry_pi():
     """Detect if running on a Raspberry Pi."""
@@ -59,12 +61,42 @@ class MainUI:
             max_pressure_psi=15.0  # Adjust based on your PT
         )
         
+        # Initialize test runner with UI phase callback
+        test_config = TestConfig(
+            # Production timing parameters
+            cylinder_extend_time=3.0,
+            fill_time=5.0,
+            stabilize_time=10.0,
+            test_duration=30.0,
+            exhaust_time=5.0,
+            cylinder_retract_time=3.0,
+            
+            # Test parameters
+            target_fill_pressure=10.0,
+            pressure_tolerance=0.5,
+            max_leak_rate=0.1,  # PSI per second
+            
+            # Safety parameters
+            max_pressure=15.0,
+            pressure_timeout=60.0
+        )
+        
+        self.test_runner = TestRunner(
+            config=test_config,
+            phase_callback=self._on_test_phase_change
+        )
+        
         # UI state variables
         self.current_pressure = 0.0
         self.test_phase = "Ready"
         self.test_result = None  # None, "PASS", "FAIL"
         self.is_testing = False
         self.pressure_update_running = False
+        
+        # Test statistics
+        self.test_count = 0
+        self.last_test_time = None
+        self.last_test_duration = None
         
         # Setup UI
         self._setup_window()
@@ -73,6 +105,7 @@ class MainUI:
         
         print("Main UI initialized")
         print(f"Platform: {'Raspberry Pi' if self.is_pi else 'Development'}")
+        print("TestRunner integrated with UI")
     
     def _setup_window(self):
         """Configure the main window."""
@@ -298,7 +331,6 @@ class MainUI:
         stats_frame.pack(fill='both', expand=True)
         
         # Test count
-        self.test_count = 0
         self.test_count_label = tk.Label(
             stats_frame,
             text=f"Tests run: {self.test_count}",
@@ -401,57 +433,58 @@ class MainUI:
         self.result_label.config(text="—", fg='#95a5a6')
         self.test_count_label.config(text=f"Tests run: {self.test_count}")
         
-        # Start mock test sequence
-        threading.Thread(target=self._run_mock_test, daemon=True).start()
+        # Start test runner
+        threading.Thread(target=self._run_test, daemon=True).start()
     
-    def _run_mock_test(self):
-        """Run a mock test sequence (will be replaced with real test logic)."""
-        test_phases = [
-            ("Extending cylinders", 2),
-            ("Filling DUT", 3),
-            ("Stabilizing", 2),
-            ("Testing", 5),
-            ("Evaluating", 1),
-            ("Exhausting", 2),
-            ("Retracting cylinders", 2)
-        ]
-        
-        for phase, duration in test_phases:
-            # Update phase in UI thread
-            self.root.after(0, lambda p=phase: self._update_test_phase(p))
-            time.sleep(duration)
-        
-        # Simulate test result (random for demo)
-        import random
-        result = "PASS" if random.random() > 0.3 else "FAIL"
-        
-        # Update result in UI thread
-        self.root.after(0, lambda r=result: self._finish_test(r))
+    def _run_test(self):
+        """Run the test using the TestRunner."""
+        try:
+            # Execute the test
+            result = self.test_runner.run_test()
+            
+            # Update UI with final result in main thread
+            self.root.after(0, lambda: self._finish_test(result))
+            
+        except Exception as e:
+            print(f"Test execution error: {e}")
+            # Update UI with error in main thread
+            self.root.after(0, lambda: self._handle_test_error(str(e)))
     
-    def _update_test_phase(self, phase):
+    def _on_test_phase_change(self, phase: TestPhase):
+        """Handle test phase change from TestRunner."""
+        # Update UI in main thread
+        self.root.after(0, lambda: self._update_test_phase(phase.value))
+    
+    def _update_test_phase(self, phase_name: str):
         """Update test phase display."""
-        self.test_phase = phase
-        self.phase_label.config(text=phase)
-        self.status_label.config(text=f"Test in progress: {phase}")
+        self.test_phase = phase_name
+        self.phase_label.config(text=phase_name)
+        self.status_label.config(text=f"Test in progress: {phase_name}")
         
         # Color coding for phases
-        if "cylinders" in phase.lower():
+        if "cylinders" in phase_name.lower():
             color = '#9b59b6'  # Purple
-        elif any(word in phase.lower() for word in ['filling', 'stabilizing']):
+        elif any(word in phase_name.lower() for word in ['filling', 'stabilizing']):
             color = '#3498db'  # Blue
-        elif "testing" in phase.lower():
+        elif "testing" in phase_name.lower():
             color = '#e67e22'  # Orange
-        elif "evaluating" in phase.lower():
+        elif "evaluating" in phase_name.lower():
             color = '#f39c12'  # Yellow
+        elif phase_name.lower() in ['complete', 'ready']:
+            color = '#95a5a6'  # Gray
         else:
             color = '#95a5a6'  # Gray
         
         self.phase_label.config(fg=color)
     
-    def _finish_test(self, result):
+    def _finish_test(self, result: TestResult):
         """Finish test and display result."""
-        self.test_result = result
+        self.test_result = result.value if result else "ERROR"
         self.is_testing = False
+        
+        # Get test data from test runner
+        test_data = self.test_runner.get_test_data()
+        duration = test_data.get('duration', 0)
         
         # Update UI
         self.test_button.config(text="START TEST", bg='#27ae60', state='normal')
@@ -459,20 +492,60 @@ class MainUI:
         self.phase_label.config(text="Complete", fg='#95a5a6')
         
         # Update result display
-        result_color = '#27ae60' if result == "PASS" else '#e74c3c'
-        self.result_label.config(text=result, fg=result_color)
+        result_text = self.test_result
+        if result_text == "PASS":
+            result_color = '#27ae60'
+        elif result_text == "FAIL":
+            result_color = '#e74c3c'
+        else:
+            result_color = '#f39c12'  # Error/Unknown
+        
+        self.result_label.config(text=result_text, fg=result_color)
         
         # Update status and last test time
         timestamp = datetime.now().strftime("%H:%M:%S")
-        self.last_test_label.config(text=f"Last test: {timestamp}")
-        self.status_label.config(text=f"Test completed: {result}")
+        self.last_test_time = timestamp
+        self.last_test_duration = duration
         
-        print(f"Test completed: {result}")
+        # Update statistics display
+        duration_text = f" ({duration:.1f}s)" if duration > 0 else ""
+        self.last_test_label.config(text=f"Last test: {timestamp}{duration_text}")
+        self.status_label.config(text=f"Test completed: {result_text}")
+        
+        print(f"Test completed: {result_text} in {duration:.1f}s")
+        
+        # Log test details if available
+        if test_data:
+            leak_rate = test_data.get('leak_rate', 0)
+            start_pressure = test_data.get('start_pressure', 0)
+            end_pressure = test_data.get('end_pressure', 0)
+            print(f"Test details: {start_pressure:.2f} → {end_pressure:.2f} PSI, leak rate: {leak_rate:.3f} PSI/s")
+    
+    def _handle_test_error(self, error_msg: str):
+        """Handle test execution error."""
+        self.test_result = "ERROR"
+        self.is_testing = False
+        
+        # Update UI
+        self.test_button.config(text="START TEST", bg='#27ae60', state='normal')
+        self.test_phase = "Error"
+        self.phase_label.config(text="Error", fg='#e74c3c')
+        self.result_label.config(text="ERROR", fg='#e74c3c')
+        
+        # Update status
+        self.status_label.config(text=f"Test error: {error_msg}")
+        
+        print(f"Test error: {error_msg}")
     
     def exit_app(self):
         """Exit the application."""
         print("Shutting down Main UI")
         self.pressure_update_running = False
+        
+        # Close test runner
+        if hasattr(self, 'test_runner'):
+            self.test_runner.close()
+        
         self.root.quit()
         self.root.destroy()
     
