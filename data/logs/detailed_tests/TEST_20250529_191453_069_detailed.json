@@ -1,0 +1,180 @@
+{
+  "test_record": {
+    "timestamp": "2025-05-29T19:14:53.069799",
+    "test_id": "TEST_20250529_191453_069",
+    "result": "PASS",
+    "duration": 56.7,
+    "start_pressure": 10.5,
+    "end_pressure": 10.3,
+    "pressure_drop": 0.2,
+    "leak_rate": 0.007,
+    "max_pressure_reached": 10.5,
+    "target_fill_pressure": 10.0,
+    "max_leak_rate_allowed": 0.1,
+    "cylinder_extend_time": 3.0,
+    "fill_time": 5.0,
+    "stabilize_time": 10.0,
+    "test_duration": 30.0,
+    "exhaust_time": 5.0,
+    "cylinder_retract_time": 3.0,
+    "notes": "Normal test completion"
+  },
+  "test_data": {
+    "start_pressure": 10.5,
+    "end_pressure": 10.3,
+    "pressure_drop": 0.2,
+    "leak_rate": 0.007,
+    "pressure_readings": [
+      [
+        0,
+        10.5
+      ],
+      [
+        30,
+        10.3
+      ]
+    ]
+  },
+  "current_test_data": {
+    "test_id": "TEST_20250529_191453_069",
+    "start_time": "2025-05-29 19:14:53.069098",
+    "config": {
+      "target_fill_pressure": 10.0,
+      "max_leak_rate": 0.1,
+      "cylinder_extend_time": 3.0,
+      "fill_time": 5.0,
+      "stabilize_time": 10.0,
+      "test_duration": 30.0,
+      "exhaust_time": 5.0,
+      "cylinder_retract_time": 3.0
+    },
+    "pressure_readings": [
+      {
+        "timestamp": "2025-05-29T19:14:53.069188",
+        "test_id": "TEST_20250529_191453_069",
+        "phase": "Extending cylinders",
+        "elapsed_time": 0,
+        "pressure_psi": 5.0,
+        "raw_current_ma": 16.0
+      },
+      {
+        "timestamp": "2025-05-29T19:14:53.069238",
+        "test_id": "TEST_20250529_191453_069",
+        "phase": "Extending cylinders",
+        "elapsed_time": 2,
+        "pressure_psi": 5.5,
+        "raw_current_ma": 16.4
+      },
+      {
+        "timestamp": "2025-05-29T19:14:53.069288",
+        "test_id": "TEST_20250529_191453_069",
+        "phase": "Extending cylinders",
+        "elapsed_time": 4,
+        "pressure_psi": 6.0,
+        "raw_current_ma": 16.8
+      },
+      {
+        "timestamp": "2025-05-29T19:14:53.069332",
+        "test_id": "TEST_20250529_191453_069",
+        "phase": "Filling DUT",
+        "elapsed_time": 10,
+        "pressure_psi": 7.0,
+        "raw_current_ma": 17.6
+      },
+      {
+        "timestamp": "2025-05-29T19:14:53.069376",
+        "test_id": "TEST_20250529_191453_069",
+        "phase": "Filling DUT",
+        "elapsed_time": 12,
+        "pressure_psi": 7.5,
+        "raw_current_ma": 18.0
+      },
+      {
+        "timestamp": "2025-05-29T19:14:53.069419",
+        "test_id": "TEST_20250529_191453_069",
+        "phase": "Filling DUT",
+        "elapsed_time": 14,
+        "pressure_psi": 8.0,
+        "raw_current_ma": 18.4
+      },
+      {
+        "timestamp": "2025-05-29T19:14:53.069463",
+        "test_id": "TEST_20250529_191453_069",
+        "phase": "Stabilizing",
+        "elapsed_time": 20,
+        "pressure_psi": 9.0,
+        "raw_current_ma": 19.2
+      },
+      {
+        "timestamp": "2025-05-29T19:14:53.069504",
+        "test_id": "TEST_20250529_191453_069",
+        "phase": "Stabilizing",
+        "elapsed_time": 22,
+        "pressure_psi": 9.5,
+        "raw_current_ma": 19.6
+      },
+      {
+        "timestamp": "2025-05-29T19:14:53.069545",
+        "test_id": "TEST_20250529_191453_069",
+        "phase": "Stabilizing",
+        "elapsed_time": 24,
+        "pressure_psi": 10.0,
+        "raw_current_ma": 20.0
+      },
+      {
+        "timestamp": "2025-05-29T19:14:53.069589",
+        "test_id": "TEST_20250529_191453_069",
+        "phase": "Testing",
+        "elapsed_time": 30,
+        "pressure_psi": 11.0,
+        "raw_current_ma": 20.8
+      },
+      {
+        "timestamp": "2025-05-29T19:14:53.069637",
+        "test_id": "TEST_20250529_191453_069",
+        "phase": "Testing",
+        "elapsed_time": 32,
+        "pressure_psi": 11.5,
+        "raw_current_ma": 21.200000000000003
+      },
+      {
+        "timestamp": "2025-05-29T19:14:53.069675",
+        "test_id": "TEST_20250529_191453_069",
+        "phase": "Testing",
+        "elapsed_time": 34,
+        "pressure_psi": 12.0,
+        "raw_current_ma": 21.6
+      }
+    ],
+    "events": [
+      {
+        "timestamp": "2025-05-29T19:14:53.069108",
+        "level": "INFO",
+        "component": "TestRunner",
+        "event": "Test session started: TEST_20250529_191453_069",
+        "details": ""
+      },
+      {
+        "timestamp": "2025-05-29T19:14:53.069719",
+        "level": "INFO",
+        "component": "SolenoidValves",
+        "event": "Fill valve opened",
+        "details": ""
+      },
+      {
+        "timestamp": "2025-05-29T19:14:53.069760",
+        "level": "WARNING",
+        "component": "PressureTransducer",
+        "event": "Pressure reading fluctuation detected",
+        "details": ""
+      },
+      {
+        "timestamp": "2025-05-29T19:14:53.069865",
+        "level": "INFO",
+        "component": "TestRunner",
+        "event": "Test completed: PASS in 56.7s, leak rate: 0.007 PSI/s",
+        "details": ""
+      }
+    ]
+  }
+}

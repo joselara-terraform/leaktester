@@ -19,6 +19,7 @@ try:
     from ..controllers.cylinders import Cylinders
     from ..controllers.pressure_calibration import PressureCalibration
     from ..controllers.relay_controller import RelayController
+    from .data_logger import DataLogger
 except ImportError:
     import sys
     import os
@@ -27,6 +28,7 @@ except ImportError:
     from controllers.cylinders import Cylinders
     from controllers.pressure_calibration import PressureCalibration
     from controllers.relay_controller import RelayController
+    from services.data_logger import DataLogger
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -83,19 +85,32 @@ class TestRunner:
     
     def __init__(self, 
                  config: Optional[TestConfig] = None,
-                 phase_callback: Optional[Callable[[TestPhase], None]] = None):
+                 phase_callback: Optional[Callable[[TestPhase], None]] = None,
+                 enable_logging: bool = True):
         """
         Initialize the test runner.
         
         Args:
             config: Test configuration, or None for defaults
             phase_callback: Optional callback function called on phase changes
+            enable_logging: Enable data logging (default True)
         """
         self.config = config or TestConfig()
         self.phase_callback = phase_callback
+        self.enable_logging = enable_logging
         
         # Initialize hardware controllers
         self._initialize_hardware()
+        
+        # Initialize data logger
+        self.data_logger = None
+        if self.enable_logging:
+            try:
+                self.data_logger = DataLogger()
+                logger.info("✓ Data logger initialized")
+            except Exception as e:
+                logger.error(f"Failed to initialize data logger: {e}")
+                self.enable_logging = False
         
         # Test state
         self.current_phase = TestPhase.READY
@@ -103,9 +118,11 @@ class TestRunner:
         self.test_data = {}
         self.is_testing = False
         self.start_time = None
+        self.test_id = None
         
         logger.info("TestRunner initialized")
         logger.info(f"Test config: {self.config}")
+        logger.info(f"Data logging: {'enabled' if self.enable_logging else 'disabled'}")
     
     def _initialize_hardware(self):
         """Initialize all hardware controllers."""
@@ -156,9 +173,32 @@ class TestRunner:
         try:
             pressure = self.pressure_calibration.read_pressure_psi(num_samples=3)
             logger.info(f"Pressure reading{' (' + context + ')' if context else ''}: {pressure:.2f} PSI")
+            
+            # Log to data logger if enabled and test is active
+            if self.enable_logging and self.data_logger and self.is_testing and self.start_time:
+                elapsed_time = (datetime.now() - self.start_time).total_seconds()
+                phase_name = self.current_phase.value if self.current_phase else "Unknown"
+                
+                # Get raw current reading if available
+                raw_current = 0.0
+                try:
+                    raw_current = self.pressure_calibration.adc_reader.read_current_ma()
+                except:
+                    pass
+                
+                self.data_logger.log_pressure_reading(
+                    phase_name, elapsed_time, pressure, raw_current
+                )
+            
             return pressure
         except Exception as e:
             logger.error(f"Failed to read pressure: {e}")
+            
+            # Log error event
+            if self.enable_logging and self.data_logger:
+                self.data_logger.log_system_event('ERROR', 'PressureTransducer', 
+                                                'Pressure reading failed', str(e))
+            
             return 0.0
     
     def _check_safety_limits(self) -> bool:
@@ -201,6 +241,28 @@ class TestRunner:
             "phases": []
         }
         
+        # Start data logging session
+        if self.enable_logging and self.data_logger:
+            try:
+                # Convert config to dict for logging
+                config_dict = {
+                    'target_fill_pressure': self.config.target_fill_pressure,
+                    'max_leak_rate': self.config.max_leak_rate,
+                    'cylinder_extend_time': self.config.cylinder_extend_time,
+                    'fill_time': self.config.fill_time,
+                    'stabilize_time': self.config.stabilize_time,
+                    'test_duration': self.config.test_duration,
+                    'exhaust_time': self.config.exhaust_time,
+                    'cylinder_retract_time': self.config.cylinder_retract_time,
+                    'max_pressure': self.config.max_pressure,
+                    'pressure_tolerance': self.config.pressure_tolerance,
+                    'pressure_timeout': self.config.pressure_timeout
+                }
+                self.test_id = self.data_logger.start_test_session(config_dict)
+                logger.info(f"Data logging session started: {self.test_id}")
+            except Exception as e:
+                logger.error(f"Failed to start data logging session: {e}")
+        
         try:
             # Execute test sequence
             if self._phase_extend_cylinders():
@@ -227,6 +289,11 @@ class TestRunner:
             self.test_result = TestResult.ERROR
             self._set_phase(TestPhase.ERROR)
             
+            # Log system error
+            if self.enable_logging and self.data_logger:
+                self.data_logger.log_system_event('ERROR', 'TestRunner', 
+                                                'Test sequence error', str(e))
+            
             # Emergency cleanup
             self._emergency_stop()
             
@@ -238,6 +305,20 @@ class TestRunner:
             self.test_data["end_time"] = end_time
             self.test_data["duration"] = duration
             self.test_data["result"] = self.test_result.value
+            
+            # Log final test result
+            if self.enable_logging and self.data_logger:
+                try:
+                    notes = f"Test ID: {self.test_id}" if self.test_id else ""
+                    self.data_logger.log_test_result(
+                        self.test_result.value,
+                        duration,
+                        self.test_data,
+                        notes
+                    )
+                    logger.info("Test data logged successfully")
+                except Exception as e:
+                    logger.error(f"Failed to log test result: {e}")
             
             logger.info("=" * 50)
             logger.info(f"TEST COMPLETED: {self.test_result.value}")
@@ -252,18 +333,30 @@ class TestRunner:
         
         try:
             logger.info(f"Extending cylinders for {self.config.cylinder_extend_time}s")
+            
+            # Log system event
+            if self.enable_logging and self.data_logger:
+                self.data_logger.log_system_event('INFO', 'Cylinders', 
+                                                f'Starting cylinder extension for {self.config.cylinder_extend_time}s')
+            
             success = self.cylinders.extend(duration=self.config.cylinder_extend_time)
             
             if success:
                 logger.info("✓ Cylinders extended successfully")
+                if self.enable_logging and self.data_logger:
+                    self.data_logger.log_system_event('INFO', 'Cylinders', 'Cylinders extended successfully')
                 return True
             else:
                 logger.error("✗ Failed to extend cylinders")
+                if self.enable_logging and self.data_logger:
+                    self.data_logger.log_system_event('ERROR', 'Cylinders', 'Failed to extend cylinders')
                 self.test_result = TestResult.ERROR
                 return False
                 
         except Exception as e:
             logger.error(f"Cylinder extension error: {e}")
+            if self.enable_logging and self.data_logger:
+                self.data_logger.log_system_event('ERROR', 'Cylinders', 'Cylinder extension error', str(e))
             self.test_result = TestResult.ERROR
             return False
     
@@ -275,6 +368,11 @@ class TestRunner:
             logger.info(f"Filling DUT for {self.config.fill_time}s")
             self._log_pressure("before fill")
             
+            # Log system event
+            if self.enable_logging and self.data_logger:
+                self.data_logger.log_system_event('INFO', 'SolenoidValves', 
+                                                f'Opening fill valve for {self.config.fill_time}s')
+            
             # Open fill valve
             success = self.solenoid_valves.fill(duration=self.config.fill_time)
             
@@ -284,18 +382,28 @@ class TestRunner:
                 
                 if pressure >= (self.config.target_fill_pressure - self.config.pressure_tolerance):
                     logger.info("✓ DUT filled successfully")
+                    if self.enable_logging and self.data_logger:
+                        self.data_logger.log_system_event('INFO', 'SolenoidValves', 
+                                                        f'DUT filled successfully to {pressure:.2f} PSI')
                     return True
                 else:
                     logger.warning(f"Fill pressure low: {pressure:.2f} < {self.config.target_fill_pressure:.2f} PSI")
+                    if self.enable_logging and self.data_logger:
+                        self.data_logger.log_system_event('WARNING', 'SolenoidValves', 
+                                                        f'Fill pressure low: {pressure:.2f} PSI < target {self.config.target_fill_pressure:.2f} PSI')
                     # Continue test anyway for now
                     return True
             else:
                 logger.error("✗ Failed to fill DUT")
+                if self.enable_logging and self.data_logger:
+                    self.data_logger.log_system_event('ERROR', 'SolenoidValves', 'Failed to fill DUT')
                 self.test_result = TestResult.ERROR
                 return False
                 
         except Exception as e:
             logger.error(f"DUT fill error: {e}")
+            if self.enable_logging and self.data_logger:
+                self.data_logger.log_system_event('ERROR', 'SolenoidValves', 'DUT fill error', str(e))
             self.test_result = TestResult.ERROR
             return False
     
@@ -513,6 +621,14 @@ class TestRunner:
             logger.warning("Test in progress - performing emergency stop")
             self._emergency_stop()
         
+        # Close data logger
+        if self.enable_logging and self.data_logger:
+            try:
+                self.data_logger.close()
+                logger.info("Data logger closed")
+            except Exception as e:
+                logger.error(f"Error closing data logger: {e}")
+        
         # Close hardware controllers
         try:
             self.solenoid_valves.close()
@@ -541,8 +657,8 @@ def main():
         def phase_callback(phase: TestPhase):
             print(f"UI UPDATE: Phase changed to {phase.value}")
         
-        # Create and run test
-        test_runner = TestRunner(config=config, phase_callback=phase_callback)
+        # Create and run test with data logging enabled
+        test_runner = TestRunner(config=config, phase_callback=phase_callback, enable_logging=True)
         
         print("Starting test sequence...")
         result = test_runner.run_test()
@@ -553,6 +669,11 @@ def main():
         for key, value in test_data.items():
             if key != "pressure_readings":  # Skip detailed pressure data
                 print(f"  {key}: {value}")
+        
+        # Show data logging info
+        if test_runner.test_id:
+            print(f"\nTest logged with ID: {test_runner.test_id}")
+            print("Check data/logs/ directory for logged data")
         
         test_runner.close()
         

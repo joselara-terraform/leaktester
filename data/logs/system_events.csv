@@ -1,0 +1,11 @@
+timestamp,level,component,event,details
+2025-05-29T19:14:53.069108,INFO,TestRunner,Test session started: TEST_20250529_191453_069,
+2025-05-29T19:14:53.069719,INFO,SolenoidValves,Fill valve opened,
+2025-05-29T19:14:53.069760,WARNING,PressureTransducer,Pressure reading fluctuation detected,
+2025-05-29T19:14:53.069865,INFO,TestRunner,"Test completed: PASS in 56.7s, leak rate: 0.007 PSI/s",
+2025-05-29T19:17:16.447142,INFO,TestRunner,Test session started: TEST_20250529_191716_447,
+2025-05-29T19:17:16.447540,INFO,Cylinders,Starting cylinder extension for 1.0s,
+2025-05-29T19:17:17.558201,INFO,Cylinders,Cylinders extended successfully,
+2025-05-29T19:17:17.670766,INFO,SolenoidValves,Opening fill valve for 2.0s,
+2025-05-29T19:17:19.781534,WARNING,SolenoidValves,Fill pressure low: 2.23 PSI < target 10.00 PSI,
+2025-05-29T19:17:32.739449,INFO,TestRunner,"Test completed: PASS in 16.3s, leak rate: -0.078 PSI/s",
