@@ -25,21 +25,21 @@ class ValveController:
         GPIO.setup(self.extend_pin, GPIO.OUT)
         GPIO.setup(self.retract_pin, GPIO.OUT)
         
-        # Ensure both solenoids start OFF
-        GPIO.output(self.extend_pin, GPIO.LOW)
-        GPIO.output(self.retract_pin, GPIO.LOW)
+        # Ensure both solenoids start OFF (HIGH)
+        GPIO.output(self.extend_pin, GPIO.HIGH)
+        GPIO.output(self.retract_pin, GPIO.HIGH)
     
     def toggle_extend(self):
         """Toggle extend solenoid on/off"""
         current_state = GPIO.input(self.extend_pin)
         GPIO.output(self.extend_pin, not current_state)
-        return not current_state
+        return current_state == GPIO.HIGH
     
     def toggle_retract(self):
         """Toggle retract solenoid on/off"""
         current_state = GPIO.input(self.retract_pin)
         GPIO.output(self.retract_pin, not current_state)
-        return not current_state
+        return current_state == GPIO.HIGH
     
     def cleanup(self):
         """Clean up GPIO settings"""
@@ -47,7 +47,7 @@ class ValveController:
 
 def main():
     # Replace with your actual GPIO pin numbers
-    controller = ValveController(extend_pin=9, retract_pin=10)
+    controller = ValveController(extend_pin=17, retract_pin=27)
     
     try:
         while True:
