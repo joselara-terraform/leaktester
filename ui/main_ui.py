@@ -1,0 +1,507 @@
+#!/usr/bin/env python3
+"""
+Main UI Module
+
+Comprehensive user interface for the EOL Leak Tester.
+Shows pressure, test phase, result, and includes test button.
+Integrates all system components into a unified touchscreen interface.
+"""
+
+import tkinter as tk
+from tkinter import ttk
+import platform
+import time
+import threading
+from datetime import datetime
+from typing import Optional
+
+# Handle imports for both module use and standalone testing
+try:
+    from ..controllers.pressure_calibration import PressureCalibration
+    from .test_button import TestButton
+except ImportError:
+    import sys
+    import os
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from controllers.pressure_calibration import PressureCalibration
+
+def is_raspberry_pi():
+    """Detect if running on a Raspberry Pi."""
+    machine = platform.machine().lower()
+    release = platform.release().lower()
+    platform_str = platform.platform().lower()
+    
+    is_arm = machine.startswith('arm') or machine.startswith('aarch64')
+    is_rpi_kernel = 'rpi' in release or 'raspberrypi' in platform_str
+    
+    return platform.system() == "Linux" and (is_arm or is_rpi_kernel)
+
+class MainUI:
+    """
+    Main user interface for the EOL Leak Tester.
+    
+    Provides a comprehensive touchscreen interface showing:
+    - Live pressure readings
+    - Current test phase
+    - Test results (Pass/Fail)
+    - Test control button
+    - System status
+    """
+    
+    def __init__(self):
+        """Initialize the main UI."""
+        self.root = tk.Tk()
+        self.is_pi = is_raspberry_pi()
+        
+        # Initialize pressure calibration system
+        self.pressure_calibration = PressureCalibration(
+            min_pressure_psi=0.0,
+            max_pressure_psi=15.0  # Adjust based on your PT
+        )
+        
+        # UI state variables
+        self.current_pressure = 0.0
+        self.test_phase = "Ready"
+        self.test_result = None  # None, "PASS", "FAIL"
+        self.is_testing = False
+        self.pressure_update_running = False
+        
+        # Setup UI
+        self._setup_window()
+        self._create_widgets()
+        self._start_pressure_updates()
+        
+        print("Main UI initialized")
+        print(f"Platform: {'Raspberry Pi' if self.is_pi else 'Development'}")
+    
+    def _setup_window(self):
+        """Configure the main window."""
+        self.root.title("EOL Leak Tester")
+        
+        # Set window size and fullscreen
+        if self.is_pi:
+            self.root.geometry("800x480")
+            self.root.attributes('-fullscreen', True)
+            self.root.configure(cursor='none')
+        else:
+            self.root.geometry("900x600")
+        
+        # Set background
+        self.root.configure(bg='#2c3e50')
+        
+        # Bind ESC to exit (for development)
+        self.root.bind('<Escape>', lambda e: self.exit_app())
+    
+    def _create_widgets(self):
+        """Create and layout all GUI widgets."""
+        # Main container with grid layout
+        main_frame = tk.Frame(self.root, bg='#2c3e50')
+        main_frame.pack(fill='both', expand=True, padx=20, pady=20)
+        
+        # Configure grid weights
+        main_frame.grid_columnconfigure(0, weight=1)
+        main_frame.grid_columnconfigure(1, weight=1)
+        main_frame.grid_rowconfigure(1, weight=1)
+        
+        # Title header
+        self._create_header(main_frame)
+        
+        # Left panel - Pressure and Status
+        self._create_left_panel(main_frame)
+        
+        # Right panel - Test Control and Results
+        self._create_right_panel(main_frame)
+        
+        # Bottom status bar
+        self._create_status_bar(main_frame)
+    
+    def _create_header(self, parent):
+        """Create the header section."""
+        header_frame = tk.Frame(parent, bg='#34495e', relief='raised', bd=2)
+        header_frame.grid(row=0, column=0, columnspan=2, sticky='ew', pady=(0, 20))
+        
+        # Title
+        title_label = tk.Label(
+            header_frame,
+            text="EOL LEAK TESTER",
+            font=('Arial', 28, 'bold'),
+            fg='white',
+            bg='#34495e'
+        )
+        title_label.pack(pady=15)
+        
+        # Current time
+        self.time_label = tk.Label(
+            header_frame,
+            text="",
+            font=('Arial', 12),
+            fg='#bdc3c7',
+            bg='#34495e'
+        )
+        self.time_label.pack()
+        self._update_time()
+    
+    def _create_left_panel(self, parent):
+        """Create the left panel with pressure display."""
+        left_frame = tk.Frame(parent, bg='#2c3e50')
+        left_frame.grid(row=1, column=0, sticky='nsew', padx=(0, 10))
+        
+        # Pressure display section
+        pressure_frame = tk.LabelFrame(
+            left_frame,
+            text="PRESSURE",
+            font=('Arial', 16, 'bold'),
+            fg='white',
+            bg='#2c3e50',
+            relief='raised',
+            bd=3
+        )
+        pressure_frame.pack(fill='x', pady=(0, 20))
+        
+        # Large pressure reading
+        self.pressure_label = tk.Label(
+            pressure_frame,
+            text="0.00",
+            font=('Arial', 48, 'bold'),
+            fg='#3498db',  # Blue
+            bg='#2c3e50'
+        )
+        self.pressure_label.pack(pady=20)
+        
+        # PSI unit
+        psi_label = tk.Label(
+            pressure_frame,
+            text="PSI",
+            font=('Arial', 20, 'bold'),
+            fg='#95a5a6',
+            bg='#2c3e50'
+        )
+        psi_label.pack()
+        
+        # Test phase section
+        phase_frame = tk.LabelFrame(
+            left_frame,
+            text="TEST PHASE",
+            font=('Arial', 16, 'bold'),
+            fg='white',
+            bg='#2c3e50',
+            relief='raised',
+            bd=3
+        )
+        phase_frame.pack(fill='x', pady=(0, 20))
+        
+        self.phase_label = tk.Label(
+            phase_frame,
+            text="Ready",
+            font=('Arial', 24, 'bold'),
+            fg='#f39c12',  # Orange
+            bg='#2c3e50'
+        )
+        self.phase_label.pack(pady=20)
+        
+        # System info section
+        info_frame = tk.LabelFrame(
+            left_frame,
+            text="SYSTEM INFO",
+            font=('Arial', 14, 'bold'),
+            fg='white',
+            bg='#2c3e50',
+            relief='raised',
+            bd=2
+        )
+        info_frame.pack(fill='both', expand=True)
+        
+        # Platform info
+        platform_text = f"Platform: {'Raspberry Pi' if self.is_pi else 'Development'}"
+        tk.Label(
+            info_frame,
+            text=platform_text,
+            font=('Arial', 10),
+            fg='#95a5a6',
+            bg='#2c3e50'
+        ).pack(anchor='w', padx=10, pady=5)
+        
+        # Pressure range info
+        range_text = f"Range: 0-15 PSI"
+        tk.Label(
+            info_frame,
+            text=range_text,
+            font=('Arial', 10),
+            fg='#95a5a6',
+            bg='#2c3e50'
+        ).pack(anchor='w', padx=10)
+    
+    def _create_right_panel(self, parent):
+        """Create the right panel with test controls and results."""
+        right_frame = tk.Frame(parent, bg='#2c3e50')
+        right_frame.grid(row=1, column=1, sticky='nsew', padx=(10, 0))
+        
+        # Test button section
+        button_frame = tk.LabelFrame(
+            right_frame,
+            text="TEST CONTROL",
+            font=('Arial', 16, 'bold'),
+            fg='white',
+            bg='#2c3e50',
+            relief='raised',
+            bd=3
+        )
+        button_frame.pack(fill='x', pady=(0, 20))
+        
+        # Main test button
+        self.test_button = tk.Button(
+            button_frame,
+            text="START TEST",
+            font=('Arial', 24, 'bold'),
+            width=12,
+            height=3,
+            bg='#27ae60',
+            fg='white',
+            activebackground='#2ecc71',
+            relief='raised',
+            bd=5,
+            command=self.on_start_test
+        )
+        self.test_button.pack(pady=20)
+        
+        # Test results section
+        result_frame = tk.LabelFrame(
+            right_frame,
+            text="TEST RESULT",
+            font=('Arial', 16, 'bold'),
+            fg='white',
+            bg='#2c3e50',
+            relief='raised',
+            bd=3
+        )
+        result_frame.pack(fill='x', pady=(0, 20))
+        
+        self.result_label = tk.Label(
+            result_frame,
+            text="—",
+            font=('Arial', 36, 'bold'),
+            fg='#95a5a6',
+            bg='#2c3e50'
+        )
+        self.result_label.pack(pady=30)
+        
+        # Test statistics section
+        stats_frame = tk.LabelFrame(
+            right_frame,
+            text="TEST STATISTICS",
+            font=('Arial', 14, 'bold'),
+            fg='white',
+            bg='#2c3e50',
+            relief='raised',
+            bd=2
+        )
+        stats_frame.pack(fill='both', expand=True)
+        
+        # Test count
+        self.test_count = 0
+        self.test_count_label = tk.Label(
+            stats_frame,
+            text=f"Tests run: {self.test_count}",
+            font=('Arial', 12),
+            fg='#95a5a6',
+            bg='#2c3e50'
+        )
+        self.test_count_label.pack(anchor='w', padx=10, pady=5)
+        
+        # Last test time
+        self.last_test_label = tk.Label(
+            stats_frame,
+            text="Last test: —",
+            font=('Arial', 12),
+            fg='#95a5a6',
+            bg='#2c3e50'
+        )
+        self.last_test_label.pack(anchor='w', padx=10)
+    
+    def _create_status_bar(self, parent):
+        """Create the bottom status bar."""
+        status_frame = tk.Frame(parent, bg='#34495e', relief='sunken', bd=2)
+        status_frame.grid(row=2, column=0, columnspan=2, sticky='ew', pady=(20, 0))
+        
+        self.status_label = tk.Label(
+            status_frame,
+            text="System ready",
+            font=('Arial', 12),
+            fg='#95a5a6',
+            bg='#34495e'
+        )
+        self.status_label.pack(side='left', padx=10, pady=5)
+        
+        # Exit button (development only)
+        if not self.is_pi:
+            exit_button = tk.Button(
+                status_frame,
+                text="Exit",
+                font=('Arial', 10),
+                bg='#e74c3c',
+                fg='white',
+                command=self.exit_app
+            )
+            exit_button.pack(side='right', padx=10, pady=2)
+    
+    def _update_time(self):
+        """Update the time display."""
+        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.time_label.config(text=current_time)
+        self.root.after(1000, self._update_time)
+    
+    def _start_pressure_updates(self):
+        """Start the pressure reading updates."""
+        if not self.pressure_update_running:
+            self.pressure_update_running = True
+            self._update_pressure()
+    
+    def _update_pressure(self):
+        """Update pressure reading (runs in UI thread)."""
+        if self.pressure_update_running:
+            try:
+                # Read pressure
+                pressure = self.pressure_calibration.read_pressure_psi(num_samples=3)
+                self.current_pressure = pressure
+                
+                # Update pressure display
+                self.pressure_label.config(text=f"{pressure:.2f}")
+                
+                # Color based on pressure level
+                if pressure < 1.0:
+                    color = '#95a5a6'  # Gray - no pressure
+                elif pressure < 5.0:
+                    color = '#f39c12'  # Orange - low pressure
+                elif pressure < 10.0:
+                    color = '#3498db'  # Blue - normal pressure
+                else:
+                    color = '#e74c3c'  # Red - high pressure
+                
+                self.pressure_label.config(fg=color)
+                
+            except Exception as e:
+                print(f"Pressure update error: {e}")
+                self.pressure_label.config(text="ERROR", fg='#e74c3c')
+            
+            # Schedule next update
+            self.root.after(250, self._update_pressure)  # 4 Hz update rate
+    
+    def on_start_test(self):
+        """Handle start test button click."""
+        if self.is_testing:
+            print("Test already in progress")
+            return
+        
+        print("Test started")
+        self.test_count += 1
+        self.is_testing = True
+        
+        # Update UI
+        self.test_button.config(text="TESTING...", bg='#f39c12', state='disabled')
+        self.result_label.config(text="—", fg='#95a5a6')
+        self.test_count_label.config(text=f"Tests run: {self.test_count}")
+        
+        # Start mock test sequence
+        threading.Thread(target=self._run_mock_test, daemon=True).start()
+    
+    def _run_mock_test(self):
+        """Run a mock test sequence (will be replaced with real test logic)."""
+        test_phases = [
+            ("Extending cylinders", 2),
+            ("Filling DUT", 3),
+            ("Stabilizing", 2),
+            ("Testing", 5),
+            ("Evaluating", 1),
+            ("Exhausting", 2),
+            ("Retracting cylinders", 2)
+        ]
+        
+        for phase, duration in test_phases:
+            # Update phase in UI thread
+            self.root.after(0, lambda p=phase: self._update_test_phase(p))
+            time.sleep(duration)
+        
+        # Simulate test result (random for demo)
+        import random
+        result = "PASS" if random.random() > 0.3 else "FAIL"
+        
+        # Update result in UI thread
+        self.root.after(0, lambda r=result: self._finish_test(r))
+    
+    def _update_test_phase(self, phase):
+        """Update test phase display."""
+        self.test_phase = phase
+        self.phase_label.config(text=phase)
+        self.status_label.config(text=f"Test in progress: {phase}")
+        
+        # Color coding for phases
+        if "cylinders" in phase.lower():
+            color = '#9b59b6'  # Purple
+        elif any(word in phase.lower() for word in ['filling', 'stabilizing']):
+            color = '#3498db'  # Blue
+        elif "testing" in phase.lower():
+            color = '#e67e22'  # Orange
+        elif "evaluating" in phase.lower():
+            color = '#f39c12'  # Yellow
+        else:
+            color = '#95a5a6'  # Gray
+        
+        self.phase_label.config(fg=color)
+    
+    def _finish_test(self, result):
+        """Finish test and display result."""
+        self.test_result = result
+        self.is_testing = False
+        
+        # Update UI
+        self.test_button.config(text="START TEST", bg='#27ae60', state='normal')
+        self.test_phase = "Complete"
+        self.phase_label.config(text="Complete", fg='#95a5a6')
+        
+        # Update result display
+        result_color = '#27ae60' if result == "PASS" else '#e74c3c'
+        self.result_label.config(text=result, fg=result_color)
+        
+        # Update status and last test time
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        self.last_test_label.config(text=f"Last test: {timestamp}")
+        self.status_label.config(text=f"Test completed: {result}")
+        
+        print(f"Test completed: {result}")
+    
+    def exit_app(self):
+        """Exit the application."""
+        print("Shutting down Main UI")
+        self.pressure_update_running = False
+        self.root.quit()
+        self.root.destroy()
+    
+    def run(self):
+        """Start the main UI event loop."""
+        print("Starting Main UI...")
+        print("Pressure monitoring active")
+        
+        try:
+            self.root.mainloop()
+        except KeyboardInterrupt:
+            print("\nMain UI interrupted by user")
+        except Exception as e:
+            print(f"Main UI error: {e}")
+        finally:
+            self.pressure_update_running = False
+
+def main():
+    """Main entry point."""
+    print("=== EOL Leak Tester Main UI ===")
+    
+    try:
+        ui = MainUI()
+        ui.run()
+    except Exception as e:
+        print(f"Failed to start Main UI: {e}")
+        return 1
+    
+    return 0
+
+if __name__ == "__main__":
+    exit(main()) 
