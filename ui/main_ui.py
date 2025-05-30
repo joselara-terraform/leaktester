@@ -98,6 +98,10 @@ class MainUI:
         self.last_test_time = None
         self.last_test_duration = None
         
+        # Test timer variables
+        self.test_start_time = None
+        self.timer_update_running = False
+        
         # Setup UI
         self._setup_window()
         self._create_widgets()
@@ -118,6 +122,13 @@ class MainUI:
             self.root.configure(cursor='none')
         else:
             self.root.geometry("900x600")
+            # Maximize window on development systems
+            self.root.state('zoomed')  # Windows/Linux maximize
+            try:
+                # macOS maximize alternative
+                self.root.attributes('-zoomed', True)
+            except:
+                pass
         
         # Set background
         self.root.configure(bg='#2c3e50')
@@ -330,6 +341,16 @@ class MainUI:
         )
         stats_frame.pack(fill='both', expand=True)
         
+        # Test timer
+        self.timer_label = tk.Label(
+            stats_frame,
+            text="Elapsed: 00:00",
+            font=('Arial', 14, 'bold'),
+            fg='#3498db',
+            bg='#2c3e50'
+        )
+        self.timer_label.pack(anchor='w', padx=10, pady=5)
+        
         # Test count
         self.test_count_label = tk.Label(
             stats_frame,
@@ -388,6 +409,32 @@ class MainUI:
             self.pressure_update_running = True
             self._update_pressure()
     
+    def _start_timer_updates(self):
+        """Start the test timer updates."""
+        if not self.timer_update_running:
+            self.timer_update_running = True
+            self._update_timer()
+    
+    def _stop_timer_updates(self):
+        """Stop the test timer updates."""
+        self.timer_update_running = False
+    
+    def _update_timer(self):
+        """Update test timer display."""
+        if self.timer_update_running and self.test_start_time:
+            elapsed = time.time() - self.test_start_time
+            minutes = int(elapsed // 60)
+            seconds = int(elapsed % 60)
+            
+            self.timer_label.config(text=f"Elapsed: {minutes:02d}:{seconds:02d}")
+            
+            # Schedule next update
+            self.root.after(1000, self._update_timer)  # Update every second
+    
+    def _reset_timer(self):
+        """Reset the timer display."""
+        self.timer_label.config(text="Elapsed: 00:00")
+    
     def _update_pressure(self):
         """Update pressure reading (runs in UI thread)."""
         if self.pressure_update_running:
@@ -427,6 +474,10 @@ class MainUI:
         print("Test started")
         self.test_count += 1
         self.is_testing = True
+        
+        # Start test timer
+        self.test_start_time = time.time()
+        self._start_timer_updates()
         
         # Update UI
         self.test_button.config(text="TESTING...", bg='#f39c12', state='disabled')
@@ -482,6 +533,9 @@ class MainUI:
         self.test_result = result.value if result else "ERROR"
         self.is_testing = False
         
+        # Stop test timer
+        self._stop_timer_updates()
+        
         # Get test data from test runner
         test_data = self.test_runner.get_test_data()
         duration = test_data.get('duration', 0)
@@ -507,6 +561,13 @@ class MainUI:
         self.last_test_time = timestamp
         self.last_test_duration = duration
         
+        # Update timer with final time
+        if self.test_start_time:
+            final_elapsed = time.time() - self.test_start_time
+            minutes = int(final_elapsed // 60)
+            seconds = int(final_elapsed % 60)
+            self.timer_label.config(text=f"Completed: {minutes:02d}:{seconds:02d}")
+        
         # Update statistics display
         duration_text = f" ({duration:.1f}s)" if duration > 0 else ""
         self.last_test_label.config(text=f"Last test: {timestamp}{duration_text}")
@@ -526,11 +587,21 @@ class MainUI:
         self.test_result = "ERROR"
         self.is_testing = False
         
+        # Stop test timer
+        self._stop_timer_updates()
+        
         # Update UI
         self.test_button.config(text="START TEST", bg='#27ae60', state='normal')
         self.test_phase = "Error"
         self.phase_label.config(text="Error", fg='#e74c3c')
         self.result_label.config(text="ERROR", fg='#e74c3c')
+        
+        # Update timer with error state
+        if self.test_start_time:
+            final_elapsed = time.time() - self.test_start_time
+            minutes = int(final_elapsed // 60)
+            seconds = int(final_elapsed % 60)
+            self.timer_label.config(text=f"Error: {minutes:02d}:{seconds:02d}")
         
         # Update status
         self.status_label.config(text=f"Test error: {error_msg}")
@@ -541,6 +612,7 @@ class MainUI:
         """Exit the application."""
         print("Shutting down Main UI")
         self.pressure_update_running = False
+        self._stop_timer_updates()
         
         # Close test runner
         if hasattr(self, 'test_runner'):
@@ -562,6 +634,7 @@ class MainUI:
             print(f"Main UI error: {e}")
         finally:
             self.pressure_update_running = False
+            self._stop_timer_updates()
 
 def main():
     """Main entry point."""
