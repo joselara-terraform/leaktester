@@ -67,8 +67,8 @@ test_parameters:
   timing:
     cylinder_extend_time: 5.0      # Time to extend cylinders
     fill_time: 5.0                 # Time to fill DUT
-    stabilize_time: 10.0           # Time to stabilize pressure
-    test_duration: 30.0            # Leak test measurement duration
+    stabilize_time: 5.0           # Time to stabilize pressure
+    test_duration: 10.0            # Leak test measurement duration
     exhaust_time: 2.0              # Time to exhaust DUT
     cylinder_retract_time: 5.0     # Time to retract cylinders
   
