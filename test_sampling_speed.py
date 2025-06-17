@@ -18,6 +18,7 @@ def test_sampling_rate(sample_rate, test_duration=3.0):
     print(f"\n--- Testing {sample_rate} SPS Configuration ---")
     
     try:
+        # Import from controllers directory
         from controllers.adc_reader import ADCReader
         from controllers.pressure_calibration import PressureCalibration
         
@@ -76,6 +77,9 @@ def test_sampling_rate(sample_rate, test_duration=3.0):
         
     except ImportError as e:
         print(f"Import error: {e}")
+        print("Make sure you're running from the leaktester directory")
+        print("Current working directory:", os.getcwd())
+        print("Available files:", os.listdir('.'))
         return None
     except Exception as e:
         print(f"Test error: {e}")
