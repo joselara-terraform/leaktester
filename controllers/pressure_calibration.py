@@ -43,17 +43,17 @@ class PressureCalibration:
                  adc_reader: Optional[ADCReader] = None,
                  min_pressure_psi: float = 0.0,
                  max_pressure_psi: float = 1.0,
-                 min_current_ma: float = 4.0,
-                 max_current_ma: float = 20.0):
+                 min_current_ma: float = 4.025,  # User's actual PT balance
+                 max_current_ma: float = 20.037):  # User's actual PT full scale
         """
         Initialize pressure calibration.
         
         Args:
             adc_reader: ADC reader instance, or None to create new one
-            min_pressure_psi: Minimum pressure reading (at 4mA)
-            max_pressure_psi: Maximum pressure reading (at 20mA)
-            min_current_ma: Minimum current (typically 4mA)
-            max_current_ma: Maximum current (typically 20mA)
+            min_pressure_psi: Minimum pressure reading (at balance current)
+            max_pressure_psi: Maximum pressure reading (at full scale current)
+            min_current_ma: Minimum current (actual PT balance: 4.025mA)
+            max_current_ma: Maximum current (actual PT full scale: 20.037mA)
         """
         self.adc_reader = adc_reader or ADCReader()
         self.min_pressure_psi = min_pressure_psi
@@ -64,19 +64,22 @@ class PressureCalibration:
         # Calibration points (current_mA, pressure_PSI)
         self.calibration_points: List[CalibrationPoint] = []
         
-        # Set default linear calibration
-        self._set_linear_calibration()
+        # Set user's specific calibration
+        self._set_user_calibration()
         
         logger.info(f"PressureCalibration initialized: {min_pressure_psi}-{max_pressure_psi} PSI")
-        logger.info(f"Current range: {min_current_ma}-{max_current_ma} mA")
+        logger.info(f"Current range: {min_current_ma}-{max_current_ma} mA (actual PT calibration)")
     
-    def _set_linear_calibration(self):
-        """Set default linear calibration (4mA=min_pressure, 20mA=max_pressure)."""
+    def _set_user_calibration(self):
+        """Set user's specific PT calibration (4.025mA=0PSI, 20.037mA=1PSI)."""
+        # Use actual calibration data from user's PT
         self.calibration_points = [
-            CalibrationPoint(self.min_current_ma, self.min_pressure_psi),
-            CalibrationPoint(self.max_current_ma, self.max_pressure_psi)
+            CalibrationPoint(4.025, 0.0),    # Balance: 0 PSI
+            CalibrationPoint(12.029, 0.5),   # Midpoint: 0.5 PSI (average of 12.031 and 12.026)
+            CalibrationPoint(20.037, 1.0)    # Full scale: 1.0 PSI
         ]
-        logger.info("Using linear calibration")
+        logger.info("Using user's specific PT calibration data")
+        logger.info("Calibration: 4.025mA=0PSI, 12.029mA=0.5PSI, 20.037mA=1PSI")
     
     def current_to_pressure_linear(self, current_ma: float) -> float:
         """
@@ -335,22 +338,24 @@ if __name__ == "__main__":
     print("=== Pressure Calibration Test ===")
     
     try:
-        # Initialize with 0-1 PSIG transducer
+        # Initialize with user's specific 0-1 PSIG transducer calibration
         calibration = PressureCalibration(
-            min_pressure_psi=0.0,    # 4mA = 0 PSI
-            max_pressure_psi=1.0     # 20mA = 1 PSI
+            min_pressure_psi=0.0,      # 0 PSI at balance current
+            max_pressure_psi=1.0,      # 1 PSI at full scale current
+            min_current_ma=4.025,      # User's actual PT balance
+            max_current_ma=20.037      # User's actual PT full scale
         )
         
         print(f"Calibration info: {calibration.get_calibration_info()}")
         
         print("\n--- Linear Conversion Test ---")
         
-        # Test linear conversion with various currents
-        test_currents = [4.0, 8.0, 12.0, 16.0, 20.0]
+        # Test linear conversion with user's specific calibration points
+        test_currents = [4.025, 8.0, 12.029, 16.0, 20.037]
         
         for current in test_currents:
             pressure = calibration.current_to_pressure(current)
-            print(f"{current:.1f}mA → {pressure:.3f}PSI")
+            print(f"{current:.3f}mA → {pressure:.4f}PSI")
         
         print("\n--- Live Pressure Reading ---")
         
@@ -360,17 +365,28 @@ if __name__ == "__main__":
             print(f"Reading {i+1}: {pressure:.4f} PSI")
             time.sleep(1)
         
-        print("\n--- Multi-point Calibration Test ---")
+        print("\n--- User's PT Calibration Points ---")
         
-        # Add some calibration points for 0-1 PSI range
-        calibration.add_calibration_point(4.0, 0.0)    # 0 PSI at 4mA
-        calibration.add_calibration_point(12.0, 0.5)   # 0.5 PSI at 12mA  
-        calibration.add_calibration_point(20.0, 1.0)   # 1.0 PSI at 20mA
+        # Show the user's actual calibration data that's being used
+        print("Using calibration data from user's PT:")
+        print("  0.0 PSI → 4.025 mA (balance)")
+        print("  0.5 PSI → 12.029 mA (midpoint average)")  
+        print("  1.0 PSI → 20.037 mA (full scale)")
+        print(f"  Sensitivity: {20.037 - 4.025:.3f} mA span")
         
-        # Test conversion with multi-point calibration
-        for current in test_currents:
+        # Test conversion with user's actual measured points
+        user_test_points = [
+            (4.025, "0.0 PSI (balance)"),
+            (4.022, "0.0 PSI (repeat)"), 
+            (12.031, "0.5 PSI"),
+            (12.026, "0.5 PSI (repeat)"),
+            (20.037, "1.0 PSI (full scale)")
+        ]
+        
+        print("\nTesting user's actual calibration points:")
+        for current, description in user_test_points:
             pressure = calibration.current_to_pressure(current)
-            print(f"{current:.1f}mA → {pressure:.3f}PSI (multi-point)")
+            print(f"{current:.3f}mA ({description}) → {pressure:.4f}PSI")
         
         print("\n--- Calibration Validation ---")
         
@@ -382,7 +398,8 @@ if __name__ == "__main__":
                 print(f"{key}: {value}")
         
         print("\n✓ Pressure calibration test completed successfully")
-        print("✓ Configured for 0-1 PSIG pressure transducer")
+        print("✓ Using user's specific PT calibration data")
+        print("✓ Balance: 4.025mA=0PSI, Sensitivity: 16.012mA span")
         
     except Exception as e:
         print(f"✗ Pressure calibration test failed: {e}")
