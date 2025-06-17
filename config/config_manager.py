@@ -52,6 +52,11 @@ class ADCConfig:
     module_type: str
     adc_range_4ma: int
     adc_range_20ma: int
+    
+    # High-speed data collection settings (optional)
+    high_speed_mode: bool = False
+    single_shot_mode: bool = False
+    i2c_frequency: int = 100000
 
 @dataclass
 class PressureTransducerConfig:
@@ -204,7 +209,10 @@ class ConfigManager:
                     'sample_rate': 128,
                     'module_type': '4-20mA Current Loop Receiver',
                     'adc_range_4ma': 6430,
-                    'adc_range_20ma': 32154
+                    'adc_range_20ma': 32154,
+                    'high_speed_mode': False,
+                    'single_shot_mode': False,
+                    'i2c_frequency': 100000
                 }
             },
             'test_parameters': {
