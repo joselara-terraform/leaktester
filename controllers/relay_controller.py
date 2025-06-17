@@ -46,8 +46,8 @@ class RelayController:
         self.relay_config = relay_config or {
             "fill": 24,      # Fill solenoid (swapped from 23)
             "exhaust": 23,   # Exhaust solenoid (swapped from 24)
-            "extend": 10,    # Cylinder extend solenoid
-            "retract": 9     # Cylinder retract solenoid
+            "extend": 9,     # Cylinder extend solenoid (swapped from 10)
+            "retract": 10    # Cylinder retract solenoid (swapped from 9)
         }
         
         self.is_pi = is_raspberry_pi()
