@@ -212,72 +212,104 @@ class SolenoidValves:
         self.close()
 
 if __name__ == "__main__":
-    # Test the solenoid valves controller
-    print("=== Solenoid Valves Test ===")
+    # Manual solenoid valve control
+    print("=== Manual Solenoid Valve Control ===")
+    print("Interactive control for testing valve hardware")
     
     try:
         with SolenoidValves() as valves:
-            print(f"Initial valve states: {valves.get_valve_states()}")
+            print(f"\nInitial valve states: {valves.get_valve_states()}")
             
-            # Test fill valve
-            print("\n--- Testing Fill Valve ---")
-            
-            # Test basic fill operations
-            print("Opening fill valve...")
-            success = valves.fill()
-            print(f"Fill valve open: {'✓' if success else '✗'}")
-            print(f"Valve states: {valves.get_valve_states()}")
-            
-            time.sleep(1)
-            
-            print("Closing fill valve...")
-            success = valves.stop_fill()
-            print(f"Fill valve closed: {'✓' if success else '✗'}")
-            print(f"Valve states: {valves.get_valve_states()}")
-            
-            # Test timed fill operation
-            print("\nTesting timed fill (2 seconds)...")
-            success = valves.fill(duration=2.0)
-            print(f"Timed fill completed: {'✓' if success else '✗'}")
-            print(f"Valve states: {valves.get_valve_states()}")
-            
-            # Test exhaust valve
-            print("\n--- Testing Exhaust Valve ---")
-            
-            # Test basic exhaust operations
-            print("Opening exhaust valve...")
-            success = valves.exhaust()
-            print(f"Exhaust valve open: {'✓' if success else '✗'}")
-            print(f"Valve states: {valves.get_valve_states()}")
-            
-            time.sleep(1)
-            
-            print("Closing exhaust valve...")
-            success = valves.stop_exhaust()
-            print(f"Exhaust valve closed: {'✓' if success else '✗'}")
-            print(f"Valve states: {valves.get_valve_states()}")
-            
-            # Test timed exhaust operation
-            print("\nTesting timed exhaust (2 seconds)...")
-            success = valves.exhaust(duration=2.0)
-            print(f"Timed exhaust completed: {'✓' if success else '✗'}")
-            print(f"Valve states: {valves.get_valve_states()}")
-            
-            # Test safety function
-            print("\n--- Testing Safety Functions ---")
-            
-            # Open both valves
-            valves.fill()
-            valves.exhaust()
-            print(f"Both valves open: {valves.get_valve_states()}")
-            
-            # Close all valves
-            success = valves.close_all_valves()
-            print(f"Close all valves: {'✓' if success else '✗'}")
-            print(f"Final valve states: {valves.get_valve_states()}")
-            
-            print("\n✓ Solenoid valves test completed successfully")
+            while True:
+                print("\n--- Manual Control Menu ---")
+                print("1. Toggle FILL valve")
+                print("2. Toggle EXHAUST valve") 
+                print("3. Show valve states")
+                print("4. Close ALL valves (safety)")
+                print("5. Exit")
+                
+                try:
+                    choice = input("\nEnter choice (1-5): ").strip()
+                    
+                    if choice == "1":
+                        # Toggle fill valve
+                        current_state = valves.get_valve_states()["fill"]
+                        new_state = not current_state
+                        
+                        if new_state:
+                            success = valves.fill()
+                            action = "OPENED"
+                        else:
+                            success = valves.stop_fill()
+                            action = "CLOSED"
+                        
+                        if success:
+                            print(f"✓ Fill valve {action}")
+                        else:
+                            print(f"✗ Failed to {action.lower()} fill valve")
+                        
+                        print(f"Fill valve state: {'OPEN' if valves.get_valve_states()['fill'] else 'CLOSED'}")
+                    
+                    elif choice == "2":
+                        # Toggle exhaust valve
+                        current_state = valves.get_valve_states()["exhaust"]
+                        new_state = not current_state
+                        
+                        if new_state:
+                            success = valves.exhaust()
+                            action = "OPENED"
+                        else:
+                            success = valves.stop_exhaust()
+                            action = "CLOSED"
+                        
+                        if success:
+                            print(f"✓ Exhaust valve {action}")
+                        else:
+                            print(f"✗ Failed to {action.lower()} exhaust valve")
+                        
+                        print(f"Exhaust valve state: {'OPEN' if valves.get_valve_states()['exhaust'] else 'CLOSED'}")
+                    
+                    elif choice == "3":
+                        # Show current states
+                        states = valves.get_valve_states()
+                        print(f"\nCurrent valve states:")
+                        print(f"  Fill valve:    {'OPEN' if states['fill'] else 'CLOSED'}")
+                        print(f"  Exhaust valve: {'OPEN' if states['exhaust'] else 'CLOSED'}")
+                    
+                    elif choice == "4":
+                        # Close all valves (safety)
+                        print("Closing all valves...")
+                        success = valves.close_all_valves()
+                        if success:
+                            print("✓ All valves closed successfully")
+                        else:
+                            print("✗ Failed to close one or more valves")
+                        
+                        states = valves.get_valve_states()
+                        print(f"Final states: Fill={'CLOSED' if not states['fill'] else 'OPEN'}, Exhaust={'CLOSED' if not states['exhaust'] else 'OPEN'}")
+                    
+                    elif choice == "5":
+                        # Exit
+                        print("Closing all valves before exit...")
+                        valves.close_all_valves()
+                        print("✓ Manual control session ended")
+                        break
+                    
+                    else:
+                        print("Invalid choice. Please enter 1-5.")
+                
+                except KeyboardInterrupt:
+                    print("\n\nKeyboard interrupt detected.")
+                    print("Closing all valves for safety...")
+                    valves.close_all_valves()
+                    print("✓ Manual control session ended safely")
+                    break
+                    
+                except Exception as e:
+                    print(f"Error: {e}")
+                    print("Closing all valves for safety...")
+                    valves.close_all_valves()
             
     except Exception as e:
-        print(f"✗ Solenoid valves test failed: {e}")
+        print(f"✗ Manual solenoid valve control failed: {e}")
         exit(1) 
