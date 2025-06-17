@@ -46,8 +46,8 @@ class ValveController:
         GPIO.cleanup()
 
 def main():
-    # Replace with your actual GPIO pin numbers
-    controller = ValveController(extend_pin=10, retract_pin=9)
+    # Updated GPIO pin numbers to match current wiring
+    controller = ValveController(extend_pin=9, retract_pin=10)
     
     try:
         while True:
