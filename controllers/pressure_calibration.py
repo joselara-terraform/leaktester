@@ -42,7 +42,7 @@ class PressureCalibration:
     def __init__(self, 
                  adc_reader: Optional[ADCReader] = None,
                  min_pressure_psi: float = 0.0,
-                 max_pressure_psi: float = 15.0,
+                 max_pressure_psi: float = 1.0,
                  min_current_ma: float = 4.0,
                  max_current_ma: float = 20.0):
         """
