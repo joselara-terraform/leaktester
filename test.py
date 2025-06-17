@@ -5,6 +5,18 @@ Simple 5/3 Directional Valve Control for Raspberry Pi
 
 import RPi.GPIO as GPIO
 import time
+import sys
+import os
+
+# Add path for config manager
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+try:
+    from config.config_manager import get_config_manager
+    CONFIG_AVAILABLE = True
+except ImportError:
+    print("Warning: Configuration manager not available, using fallback pins")
+    CONFIG_AVAILABLE = False
 
 class ValveController:
     def __init__(self, extend_pin, retract_pin):
@@ -46,8 +58,26 @@ class ValveController:
         GPIO.cleanup()
 
 def main():
-    # Updated GPIO pin numbers to match current wiring
-    controller = ValveController(extend_pin=9, retract_pin=10)
+    # Load GPIO pin numbers from configuration
+    if CONFIG_AVAILABLE:
+        try:
+            config_manager = get_config_manager()
+            gpio_config = config_manager.get_gpio_config()
+            extend_pin = gpio_config['extend']
+            retract_pin = gpio_config['retract']
+            print(f"Using configuration: Extend=GPIO{extend_pin}, Retract=GPIO{retract_pin}")
+        except Exception as e:
+            print(f"Failed to load configuration: {e}")
+            print("Using fallback pin assignments")
+            extend_pin = 9
+            retract_pin = 10
+    else:
+        # Fallback pin assignments
+        extend_pin = 9
+        retract_pin = 10
+        print(f"Using fallback pins: Extend=GPIO{extend_pin}, Retract=GPIO{retract_pin}")
+    
+    controller = ValveController(extend_pin=extend_pin, retract_pin=retract_pin)
     
     try:
         while True:

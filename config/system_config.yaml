@@ -1,0 +1,258 @@
+# EOL Leak Tester System Configuration
+# This file contains all configurable parameters for the system
+
+# Hardware Configuration
+gpio:
+  # GPIO pin assignments (BCM numbering)
+  fill: 24          # Fill solenoid valve
+  exhaust: 23       # Exhaust solenoid valve
+  extend: 9         # Cylinder extend solenoid
+  retract: 10       # Cylinder retract solenoid
+
+# Valve Configuration
+valves:
+  fill:
+    name: "Fill Valve"
+    description: "Pressurizes DUT with test gas"
+    type: "solenoid"
+    normally_closed: true
+  exhaust:
+    name: "Exhaust Valve"
+    description: "Depressurizes DUT to atmosphere"
+    type: "solenoid"
+    normally_closed: true
+  extend:
+    name: "Extend Cylinders"
+    description: "Extends pneumatic cylinders to clamp DUT"
+    type: "cylinder_solenoid"
+    normally_closed: true
+  retract:
+    name: "Retract Cylinders"
+    description: "Retracts pneumatic cylinders to release DUT"
+    type: "cylinder_solenoid"
+    normally_closed: true
+
+# Pressure Transducer Configuration
+pressure_transducer:
+  # Pressure range
+  min_pressure_psi: 0.0
+  max_pressure_psi: 1.0
+  
+  # Calibration data (from your specific PT)
+  calibration:
+    balance_current_ma: 4.025      # 0 PSI reading
+    full_scale_current_ma: 20.037  # 1 PSI reading
+    midpoint_current_ma: 12.029    # 0.5 PSI reading (average)
+    midpoint_pressure_psi: 0.5
+    sensitivity_ma: 16.012         # Full scale span (20.037 - 4.025)
+  
+  # ADC Configuration
+  adc:
+    i2c_address: 0x48
+    bus_number: 1
+    gain: 2                        # Gain setting for 4-20mA module
+    sample_rate: 860               # Samples per second (max for ADS1115)
+    module_type: "4-20mA Current Loop Receiver"
+    adc_range_4ma: 6430           # Raw ADC value at 4mA
+    adc_range_20ma: 32154         # Raw ADC value at 20mA
+    
+    # High-speed data collection settings
+    high_speed_mode: false         # Enable for maximum sampling rate
+    single_shot_mode: false        # Continuous vs single-shot conversion
+    i2c_frequency: 400000          # I2C bus frequency (400kHz fast mode)
+
+# Test Sequence Parameters
+test_parameters:
+  # Timing parameters (seconds)
+  timing:
+    cylinder_extend_time: 5.0      # Time to extend cylinders
+    fill_time: 5.0                 # Time to fill DUT
+    stabilize_time: 10.0           # Time to stabilize pressure
+    test_duration: 30.0            # Leak test measurement duration
+    exhaust_time: 2.0              # Time to exhaust DUT
+    cylinder_retract_time: 5.0     # Time to retract cylinders
+  
+  # Pressure parameters
+  pressure:
+    target_fill_pressure: 0.5      # Target test pressure (PSI)
+    pressure_tolerance: 0.05       # Acceptable pressure deviation (PSI)
+    max_leak_rate: 0.005           # Maximum acceptable leak rate (PSI/s)
+    min_test_pressure: 0.1         # Minimum pressure to start test
+  
+  # Safety parameters
+  safety:
+    max_pressure: 1.2              # Maximum safe pressure (PSI)
+    pressure_timeout: 60.0         # Timeout for pressure operations
+    emergency_stop_timeout: 5.0    # Emergency stop response time
+    max_fill_attempts: 3           # Maximum fill retry attempts
+    pressure_overshoot_limit: 1.5  # Maximum pressure before emergency stop
+
+# Cylinder Control Parameters
+cylinder_parameters:
+  # Timing
+  default_extend_time: 5.0         # Default extend duration
+  default_retract_time: 5.0        # Default retract duration
+  safety_timeout: 10.0             # Maximum time for cylinder operation
+  
+  # Safety
+  simultaneous_solenoid_check: true  # Prevent both solenoids on simultaneously
+  post_operation_delay: 0.1          # Delay after solenoid operation
+  emergency_stop_priority: true      # Emergency stop overrides all operations
+
+# User Interface Configuration
+ui:
+  # Display settings
+  display:
+    fullscreen_on_pi: true
+    window_size: [900, 600]        # Development window size
+    pi_resolution: [800, 480]      # Pi touchscreen resolution
+    cursor_visible: false          # Hide cursor on Pi
+  
+  # Update rates
+  update_rates:
+    pressure_update_hz: 4          # Pressure reading frequency
+    timer_update_hz: 1             # Timer display update frequency
+    ui_refresh_ms: 250             # UI refresh interval
+  
+  # Colors (hex codes)
+  colors:
+    pass_result: "#27ae60"         # Green for PASS
+    fail_result: "#e74c3c"         # Red for FAIL
+    error_result: "#f39c12"        # Orange for ERROR
+    normal_pressure: "#3498db"     # Blue for normal pressure
+    low_pressure: "#f39c12"        # Orange for low pressure
+    high_pressure: "#e74c3c"       # Red for high pressure
+    background: "#2c3e50"          # Dark blue background
+    panel_background: "#34495e"    # Lighter panel background
+    text_primary: "#ffffff"        # White text
+    text_secondary: "#95a5a6"      # Gray text
+  
+  # Fonts
+  fonts:
+    title_size: 28
+    large_display_size: 48
+    button_size: 24
+    normal_size: 12
+    small_size: 10
+
+# Data Logging Configuration
+logging:
+  # File locations
+  directories:
+    main: "data/logs"
+    detailed: "data/logs/detailed_tests"
+    backups: "data/logs/backups"
+  
+  # Logging levels
+  level: "INFO"                    # DEBUG, INFO, WARNING, ERROR
+  console_output: true
+  
+  # File management
+  max_file_size_mb: 10
+  backup_count: 5
+  rotation_enabled: true
+  
+  # Data retention
+  keep_detailed_days: 30           # Days to keep detailed test data
+  keep_summary_days: 365           # Days to keep summary data
+  auto_cleanup: true
+
+# System Configuration
+system:
+  # Platform detection
+  auto_detect_platform: true       # Automatically detect Pi vs development
+  force_mock_hardware: false       # Force mock hardware mode
+  
+  # Hardware timeouts
+  hardware_init_timeout: 30.0      # Timeout for hardware initialization
+  i2c_timeout: 5.0                 # I2C operation timeout
+  gpio_setup_delay: 0.1            # Delay after GPIO setup
+  
+  # Error handling
+  max_retry_attempts: 3            # Maximum retry attempts for operations
+  retry_delay: 1.0                 # Delay between retry attempts
+  graceful_shutdown: true          # Enable graceful shutdown on errors
+  
+  # Performance
+  pressure_reading_samples: 3      # Number of samples to average
+  pressure_reading_delay: 0.05     # Delay between pressure samples
+  
+  # High-speed data collection
+  enable_burst_sampling: false     # Enable burst mode for high-speed data collection
+  burst_sample_count: 100          # Number of samples in burst mode
+  burst_sample_rate: 500           # Target samples per second in burst mode
+  continuous_sampling: false       # Enable continuous sampling (no delays)
+
+# Development Configuration
+development:
+  # Mock hardware settings
+  mock_hardware: true              # Use mock hardware when not on Pi
+  mock_pressure_variation: 0.01    # Pressure variation in mock mode
+  mock_test_duration_factor: 0.1   # Speed up tests in mock mode
+  
+  # Debug settings
+  verbose_logging: true
+  debug_gpio_operations: false
+  debug_pressure_readings: false
+  debug_test_phases: true
+  
+  # Testing
+  skip_hardware_checks: false     # Skip hardware initialization checks
+  allow_unsafe_operations: false  # Allow operations that bypass safety checks
+
+# Quality Control Configuration
+quality_control:
+  # Statistical control
+  control_limits:
+    leak_rate_warning: 0.003       # Warning threshold for leak rate
+    leak_rate_control: 0.004       # Control limit for leak rate
+    pressure_stability: 0.002      # Required pressure stability
+  
+  # Trending
+  enable_trending: true
+  trend_analysis_points: 10        # Number of recent tests to analyze
+  
+  # Alerts
+  consecutive_fail_limit: 3        # Alert after N consecutive failures
+  leak_rate_trend_alert: true     # Alert on increasing leak rate trend
+
+# Calibration Configuration
+calibration:
+  # Pressure calibration
+  pressure:
+    auto_calibration: false        # Enable automatic calibration
+    calibration_points: 3          # Number of calibration points
+    calibration_tolerance: 0.001   # Acceptable calibration error
+  
+  # Timing calibration
+  timing:
+    auto_adjust_timing: false      # Automatically adjust timing based on performance
+    timing_tolerance: 0.5          # Acceptable timing deviation (seconds)
+  
+  # Validation
+  require_calibration_check: true  # Require calibration validation before testing
+  calibration_interval_hours: 168  # Hours between calibration checks (weekly)
+
+# Network Configuration (if needed for future features)
+network:
+  enable_remote_monitoring: false
+  mqtt_broker: null
+  api_endpoint: null
+  data_upload: false
+
+# Maintenance Configuration
+maintenance:
+  # Scheduled maintenance
+  enable_maintenance_alerts: true
+  maintenance_interval_hours: 2160  # 90 days
+  
+  # Component life tracking
+  track_valve_cycles: true
+  track_pressure_cycles: true
+  max_valve_cycles: 100000
+  max_pressure_cycles: 50000
+  
+  # Performance monitoring
+  monitor_performance: true
+  performance_baseline_tests: 10   # Tests to establish baseline
+  performance_degradation_threshold: 0.1  # Threshold for performance alerts 

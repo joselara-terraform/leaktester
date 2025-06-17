@@ -15,8 +15,13 @@ from dataclasses import dataclass
 # Handle imports for both module use and standalone testing
 try:
     from .adc_reader import ADCReader
+    from ..config.config_manager import get_config_manager
 except ImportError:
     from adc_reader import ADCReader
+    import sys
+    import os
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from config.config_manager import get_config_manager
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -41,34 +46,40 @@ class PressureCalibration:
     
     def __init__(self, 
                  adc_reader: Optional[ADCReader] = None,
-                 min_pressure_psi: float = 0.0,
-                 max_pressure_psi: float = 1.0,
-                 min_current_ma: float = 4.025,  # User's actual PT balance
-                 max_current_ma: float = 20.037):  # User's actual PT full scale
+                 min_pressure_psi: Optional[float] = None,
+                 max_pressure_psi: Optional[float] = None,
+                 min_current_ma: Optional[float] = None,
+                 max_current_ma: Optional[float] = None):
         """
         Initialize pressure calibration.
         
         Args:
             adc_reader: ADC reader instance, or None to create new one
-            min_pressure_psi: Minimum pressure reading (at balance current)
-            max_pressure_psi: Maximum pressure reading (at full scale current)
-            min_current_ma: Minimum current (actual PT balance: 4.025mA)
-            max_current_ma: Maximum current (actual PT full scale: 20.037mA)
+            min_pressure_psi: Minimum pressure reading (loaded from config if None)
+            max_pressure_psi: Maximum pressure reading (loaded from config if None)
+            min_current_ma: Minimum current (loaded from config if None)
+            max_current_ma: Maximum current (loaded from config if None)
         """
+        # Load configuration if not provided
+        config_manager = get_config_manager()
+        
+        if min_pressure_psi is None or max_pressure_psi is None or min_current_ma is None or max_current_ma is None:
+            config_data = config_manager.get_pressure_calibration_config()
+            
         self.adc_reader = adc_reader or ADCReader()
-        self.min_pressure_psi = min_pressure_psi
-        self.max_pressure_psi = max_pressure_psi
-        self.min_current_ma = min_current_ma
-        self.max_current_ma = max_current_ma
+        self.min_pressure_psi = min_pressure_psi if min_pressure_psi is not None else config_data['min_pressure_psi']
+        self.max_pressure_psi = max_pressure_psi if max_pressure_psi is not None else config_data['max_pressure_psi']
+        self.min_current_ma = min_current_ma if min_current_ma is not None else config_data['min_current_ma']
+        self.max_current_ma = max_current_ma if max_current_ma is not None else config_data['max_current_ma']
         
         # Calibration points (current_mA, pressure_PSI)
         self.calibration_points: List[CalibrationPoint] = []
         
-        # Set user's specific calibration
-        self._set_user_calibration()
+        # Set user's specific calibration from config
+        self._set_config_calibration(config_manager)
         
-        logger.info(f"PressureCalibration initialized: {min_pressure_psi}-{max_pressure_psi} PSI")
-        logger.info(f"Current range: {min_current_ma}-{max_current_ma} mA (actual PT calibration)")
+        logger.info(f"PressureCalibration initialized: {self.min_pressure_psi}-{self.max_pressure_psi} PSI")
+        logger.info(f"Current range: {self.min_current_ma}-{self.max_current_ma} mA (from configuration)")
     
     def _set_user_calibration(self):
         """Set user's specific PT calibration (4.025mA=0PSI, 20.037mA=1PSI)."""
@@ -80,6 +91,22 @@ class PressureCalibration:
         ]
         logger.info("Using user's specific PT calibration data")
         logger.info("Calibration: 4.025mA=0PSI, 12.029mA=0.5PSI, 20.037mA=1PSI")
+    
+    def _set_config_calibration(self, config_manager):
+        """Set PT calibration from configuration file."""
+        # Get calibration data from config
+        cal_config = config_manager.pressure_calibration
+        
+        # Use actual calibration data from configuration
+        self.calibration_points = [
+            CalibrationPoint(cal_config.balance_current_ma, 0.0),      # Balance: 0 PSI
+            CalibrationPoint(cal_config.midpoint_current_ma, cal_config.midpoint_pressure_psi),  # Midpoint
+            CalibrationPoint(cal_config.full_scale_current_ma, self.max_pressure_psi)  # Full scale
+        ]
+        logger.info("Using PT calibration data from configuration")
+        logger.info(f"Calibration: {cal_config.balance_current_ma:.3f}mA=0PSI, "
+                   f"{cal_config.midpoint_current_ma:.3f}mA={cal_config.midpoint_pressure_psi}PSI, "
+                   f"{cal_config.full_scale_current_ma:.3f}mA={self.max_pressure_psi}PSI")
     
     def current_to_pressure_linear(self, current_ma: float) -> float:
         """

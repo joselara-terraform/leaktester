@@ -15,20 +15,23 @@ from dataclasses import dataclass
 
 # Handle imports for both module use and standalone testing
 try:
+    from ..controllers.relay_controller import RelayController
     from ..controllers.solenoid_valves import SolenoidValves
     from ..controllers.cylinders import Cylinders
     from ..controllers.pressure_calibration import PressureCalibration
-    from ..controllers.relay_controller import RelayController
-    from .data_logger import DataLogger
+    from ..services.data_logger import DataLogger
+    from ..config.config_manager import get_config_manager
 except ImportError:
+    # For standalone testing
     import sys
     import os
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from controllers.relay_controller import RelayController
     from controllers.solenoid_valves import SolenoidValves
     from controllers.cylinders import Cylinders
     from controllers.pressure_calibration import PressureCalibration
-    from controllers.relay_controller import RelayController
     from services.data_logger import DataLogger
+    from config.config_manager import get_config_manager
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -75,6 +78,28 @@ class TestConfig:
     max_pressure: float = 15.0
     pressure_timeout: float = 60.0
 
+    def __str__(self):
+        return f"TestConfig(target_pressure={self.target_fill_pressure}, max_leak_rate={self.max_leak_rate})"
+
+def create_test_config_from_file() -> TestConfig:
+    """Create TestConfig from configuration file."""
+    config_manager = get_config_manager()
+    config_dict = config_manager.get_test_config_for_runner()
+    
+    return TestConfig(
+        cylinder_extend_time=config_dict['cylinder_extend_time'],
+        fill_time=config_dict['fill_time'],
+        stabilize_time=config_dict['stabilize_time'],
+        test_duration=config_dict['test_duration'],
+        exhaust_time=config_dict['exhaust_time'],
+        cylinder_retract_time=config_dict['cylinder_retract_time'],
+        target_fill_pressure=config_dict['target_fill_pressure'],
+        pressure_tolerance=config_dict['pressure_tolerance'],
+        max_leak_rate=config_dict['max_leak_rate'],
+        max_pressure=config_dict['max_pressure'],
+        pressure_timeout=config_dict['pressure_timeout']
+    )
+
 class TestRunner:
     """
     Test runner service that orchestrates the complete leak test sequence.
@@ -85,17 +110,17 @@ class TestRunner:
     
     def __init__(self, 
                  config: Optional[TestConfig] = None,
-                 phase_callback: Optional[Callable[[TestPhase], None]] = None,
+                 phase_callback: Optional[callable] = None,
                  enable_logging: bool = True):
         """
         Initialize the test runner.
         
         Args:
-            config: Test configuration, or None for defaults
-            phase_callback: Optional callback function called on phase changes
+            config: Test configuration (loads from file if None)
+            phase_callback: Optional callback for phase changes
             enable_logging: Enable data logging (default True)
         """
-        self.config = config or TestConfig()
+        self.config = config or create_test_config_from_file()
         self.phase_callback = phase_callback
         self.enable_logging = enable_logging
         

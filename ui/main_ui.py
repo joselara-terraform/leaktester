@@ -18,14 +18,16 @@ from typing import Optional
 # Handle imports for both module use and standalone testing
 try:
     from ..controllers.pressure_calibration import PressureCalibration
-    from ..services.test_runner import TestRunner, TestConfig, TestPhase, TestResult
+    from ..services.test_runner import TestRunner, TestConfig, TestPhase, TestResult, create_test_config_from_file
+    from ..config.config_manager import get_config_manager
     from .test_button import TestButton
 except ImportError:
     import sys
     import os
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from controllers.pressure_calibration import PressureCalibration
-    from services.test_runner import TestRunner, TestConfig, TestPhase, TestResult
+    from services.test_runner import TestRunner, TestConfig, TestPhase, TestResult, create_test_config_from_file
+    from config.config_manager import get_config_manager
 
 def is_raspberry_pi():
     """Detect if running on a Raspberry Pi."""
@@ -55,34 +57,15 @@ class MainUI:
         self.root = tk.Tk()
         self.is_pi = is_raspberry_pi()
         
-        # Initialize pressure calibration system
-        self.pressure_calibration = PressureCalibration(
-            min_pressure_psi=0.0,
-            max_pressure_psi=15.0  # Adjust based on your PT
-        )
+        # Load configuration
+        self.config_manager = get_config_manager()
         
-        # Initialize test runner with UI phase callback
-        test_config = TestConfig(
-            # Production timing parameters
-            cylinder_extend_time=3.0,
-            fill_time=5.0,
-            stabilize_time=10.0,
-            test_duration=30.0,
-            exhaust_time=5.0,
-            cylinder_retract_time=3.0,
-            
-            # Test parameters
-            target_fill_pressure=10.0,
-            pressure_tolerance=0.5,
-            max_leak_rate=0.1,  # PSI per second
-            
-            # Safety parameters
-            max_pressure=15.0,
-            pressure_timeout=60.0
-        )
+        # Initialize pressure calibration system from config
+        self.pressure_calibration = PressureCalibration()
         
+        # Initialize test runner with configuration-based TestConfig
         self.test_runner = TestRunner(
-            config=test_config,
+            config=create_test_config_from_file(),
             phase_callback=self._on_test_phase_change
         )
         
@@ -115,13 +98,24 @@ class MainUI:
         """Configure the main window."""
         self.root.title("EOL Leak Tester")
         
+        # Get UI configuration
+        ui_config = self.config_manager.ui
+        
         # Set window size and fullscreen
-        if self.is_pi:
-            self.root.geometry("800x480")
+        if self.is_pi and ui_config and ui_config.display.fullscreen_on_pi:
+            pi_res = ui_config.display.pi_resolution
+            self.root.geometry(f"{pi_res[0]}x{pi_res[1]}")
             self.root.attributes('-fullscreen', True)
-            self.root.configure(cursor='none')
+            if not ui_config.display.cursor_visible:
+                self.root.configure(cursor='none')
         else:
-            self.root.geometry("900x600")
+            # Development or fallback settings
+            if ui_config and ui_config.display.window_size:
+                win_size = ui_config.display.window_size
+                self.root.geometry(f"{win_size[0]}x{win_size[1]}")
+            else:
+                self.root.geometry("900x600")
+            
             # Maximize window on development systems
             self.root.state('zoomed')  # Windows/Linux maximize
             try:
@@ -130,8 +124,12 @@ class MainUI:
             except:
                 pass
         
-        # Set background
-        self.root.configure(bg='#2c3e50')
+        # Set background from config
+        bg_color = '#2c3e50'  # Default
+        if ui_config and ui_config.colors:
+            bg_color = ui_config.colors.background
+        
+        self.root.configure(bg=bg_color)
         
         # Bind ESC to exit (for development)
         self.root.bind('<Escape>', lambda e: self.exit_app())
@@ -463,7 +461,9 @@ class MainUI:
                 self.pressure_label.config(text="ERROR", fg='#e74c3c')
             
             # Schedule next update
-            self.root.after(250, self._update_pressure)  # 4 Hz update rate
+            ui_config = self.config_manager.ui
+            update_ms = ui_config.update_rates.ui_refresh_ms if ui_config else 250
+            self.root.after(update_ms, self._update_pressure)  # Configurable update rate
     
     def on_start_test(self):
         """Handle start test button click."""

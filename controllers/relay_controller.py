@@ -15,6 +15,15 @@ from typing import Dict, Optional
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Handle imports for both module use and standalone testing
+try:
+    from ..config.config_manager import get_config_manager
+except ImportError:
+    import sys
+    import os
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from config.config_manager import get_config_manager
+
 def is_raspberry_pi():
     """Detect if running on a Raspberry Pi."""
     machine = platform.machine().lower()
@@ -40,15 +49,16 @@ class RelayController:
         
         Args:
             relay_config: Dictionary mapping relay_id to GPIO pin number
-                         Example: {"fill": 18, "exhaust": 19, "isolate": 20}
+                         If None, loads from configuration file
         """
-        # Default relay configuration if none provided
-        self.relay_config = relay_config or {
-            "fill": 24,      # Fill solenoid (swapped from 23)
-            "exhaust": 23,   # Exhaust solenoid (swapped from 24)
-            "extend": 9,     # Cylinder extend solenoid (swapped from 10)
-            "retract": 10    # Cylinder retract solenoid (swapped from 9)
-        }
+        if relay_config is None:
+            # Load configuration from config manager
+            config_manager = get_config_manager()
+            self.relay_config = config_manager.get_gpio_config()
+            logger.info("GPIO configuration loaded from config file")
+        else:
+            # Use provided configuration
+            self.relay_config = relay_config
         
         self.is_pi = is_raspberry_pi()
         self.relays = {}  # Will store relay objects
