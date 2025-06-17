@@ -37,7 +37,7 @@ class ADCReader:
     def __init__(self, 
                  i2c_address: int = 0x48,
                  bus_number: int = 1,
-                 gain: int = 1,
+                 gain: int = 2,
                  sample_rate: int = 128):
         """
         Initialize the ADC reader.
@@ -45,7 +45,7 @@ class ADCReader:
         Args:
             i2c_address: I2C address of the ADC (default 0x48)
             bus_number: I2C bus number (default 1)
-            gain: ADC gain setting (default 1 = ±4.096V range)
+            gain: ADC gain setting (default 2 for 4-20mA module)
             sample_rate: Sample rate in samples per second
         """
         self.i2c_address = i2c_address
@@ -100,8 +100,8 @@ class ADCReader:
         
         class MockADC:
             def __init__(self):
-                self.gain = 1
-                self._mock_value = 1.5  # Simulate 12mA (mid-range)
+                self.gain = 2  # Updated for 4-20mA module
+                self._mock_raw_value = 12292  # Simulate ~12mA (mid-range for 4-20mA)
                 
         class MockChannel:
             def __init__(self, mock_adc):
@@ -109,18 +109,19 @@ class ADCReader:
                 
             @property
             def voltage(self):
-                # Simulate varying voltage (pressure changes)
-                import time
-                base_voltage = self.ads._mock_value
-                # Add small variation to simulate real readings
-                variation = 0.1 * (time.time() % 10 - 5) / 5  # ±0.1V variation
-                return base_voltage + variation
+                # Convert mock raw value back to voltage for compatibility
+                # Using gain=2 range (±2.048V)
+                voltage_range = 2.048  # For gain=2
+                return (self.ads._mock_raw_value / 32767) * voltage_range
                 
             @property
             def value(self):
-                # Convert voltage to ADC raw value (16-bit for ADS1115)
-                voltage_range = 4.096  # For gain=1
-                return int((self.voltage / voltage_range) * 32767)
+                # Return mock raw value with small variation
+                import time
+                base_value = self.ads._mock_raw_value
+                # Add small variation to simulate real readings
+                variation = int(100 * (time.time() % 10 - 5) / 5)  # ±100 ADC counts variation
+                return base_value + variation
         
         self.ads = MockADC()
         self.channel = MockChannel(self.ads)
@@ -170,18 +171,50 @@ class ADCReader:
         current_ma = (voltage / shunt_resistor) * 1000.0
         return current_ma
     
-    def read_current_ma(self, shunt_resistor: float = 250.0) -> float:
+    def raw_adc_to_current_ma(self, raw_value: int) -> float:
         """
-        Read current in milliamps from pressure transducer.
+        Convert raw ADC value directly to 4-20mA current for 4-20mA loop receiver module.
+        
+        Based on module datasheet:
+        - 4mA = ~6430 raw ADC value
+        - 20mA = ~32154 raw ADC value
         
         Args:
-            shunt_resistor: Shunt resistor value in ohms
+            raw_value: Raw ADC reading (0-32767 for ADS1115)
+            
+        Returns:
+            float: Current in milliamps
+        """
+        # Module specifications from datasheet
+        ADC_4MA = 6430
+        ADC_20MA = 32154
+        
+        # Linear interpolation: current = 4 + (raw - 6430) * (20-4) / (32154-6430)
+        if raw_value <= ADC_4MA:
+            # Below 4mA range - extrapolate
+            current_ma = 4.0 + (raw_value - ADC_4MA) * 16.0 / (ADC_20MA - ADC_4MA)
+        elif raw_value >= ADC_20MA:
+            # Above 20mA range - extrapolate  
+            current_ma = 4.0 + (raw_value - ADC_4MA) * 16.0 / (ADC_20MA - ADC_4MA)
+        else:
+            # Normal range - interpolate
+            current_ma = 4.0 + (raw_value - ADC_4MA) * 16.0 / (ADC_20MA - ADC_4MA)
+        
+        return current_ma
+    
+    def read_current_ma(self, shunt_resistor: float = 250.0) -> float:
+        """
+        Read current in milliamps from 4-20mA loop receiver module.
+        
+        Args:
+            shunt_resistor: Ignored - kept for compatibility
             
         Returns:
             float: Current in milliamps (should be 4-20mA range)
         """
-        voltage = self.read_voltage()
-        current_ma = self.voltage_to_current_ma(voltage, shunt_resistor)
+        # For 4-20mA loop receiver module, use raw ADC value directly
+        raw_value = self.read_raw_value()
+        current_ma = self.raw_adc_to_current_ma(raw_value)
         return current_ma
     
     def read_multiple_samples(self, num_samples: int = 10, delay: float = 0.1) -> Tuple[float, float, float]:
@@ -236,9 +269,13 @@ class ADCReader:
             "i2c_address": f"0x{self.i2c_address:02X}",
             "bus_number": self.bus_number,
             "gain": self.gain,
+            "voltage_range": "±2.048V" if self.gain == 2 else "±4.096V",
             "sample_rate": self.sample_rate,
             "is_pi": self.is_pi,
-            "mock_mode": not self.is_pi
+            "mock_mode": not self.is_pi,
+            "module_type": "4-20mA Current Loop Receiver",
+            "adc_range_4ma": 6430,
+            "adc_range_20ma": 32154
         }
 
 if __name__ == "__main__":
@@ -258,10 +295,18 @@ if __name__ == "__main__":
         voltage = adc.read_voltage()
         current = adc.read_current_ma()
         
+        # Also show old voltage-based calculation for comparison
+        current_old_method = adc.voltage_to_current_ma(voltage)
+        
         print(f"Raw ADC value: {raw_value}")
         print(f"Voltage: {voltage:.3f} V")
-        print(f"Current: {current:.2f} mA")
+        print(f"Current (4-20mA module): {current:.2f} mA")
+        print(f"Current (old shunt method): {current_old_method:.2f} mA")
         print(f"In valid range (4-20mA): {adc.is_current_in_range(current)}")
+        
+        # Show expected values based on datasheet
+        expected_current = adc.raw_adc_to_current_ma(raw_value)
+        print(f"Expected current from raw ADC: {expected_current:.2f} mA")
         
         print("\n--- Multiple Samples Test ---")
         
