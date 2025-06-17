@@ -30,7 +30,11 @@ except ImportError:
     from controllers.solenoid_valves import SolenoidValves
     from controllers.cylinders import Cylinders
     from controllers.pressure_calibration import PressureCalibration
-    from services.data_logger import DataLogger
+    try:
+        from services.data_logger import DataLogger
+    except ImportError:
+        # DataLogger might not exist yet
+        DataLogger = None
     from config.config_manager import get_config_manager
 
 # Set up logging
@@ -129,13 +133,16 @@ class TestRunner:
         
         # Initialize data logger
         self.data_logger = None
-        if self.enable_logging:
+        if self.enable_logging and DataLogger is not None:
             try:
                 self.data_logger = DataLogger()
                 logger.info("✓ Data logger initialized")
             except Exception as e:
                 logger.error(f"Failed to initialize data logger: {e}")
                 self.enable_logging = False
+        elif DataLogger is None:
+            logger.info("DataLogger not available - continuing without logging")
+            self.enable_logging = False
         
         # Test state
         self.current_phase = TestPhase.READY

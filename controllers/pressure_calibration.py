@@ -17,10 +17,11 @@ try:
     from .adc_reader import ADCReader
     from ..config.config_manager import get_config_manager
 except ImportError:
-    from adc_reader import ADCReader
+    # Fallback for direct execution
     import sys
     import os
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from controllers.adc_reader import ADCReader
     from config.config_manager import get_config_manager
 
 # Set up logging

@@ -22,12 +22,18 @@ try:
     from ..config.config_manager import get_config_manager
     from .test_button import TestButton
 except ImportError:
+    # Fallback for direct execution
     import sys
     import os
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from controllers.pressure_calibration import PressureCalibration
     from services.test_runner import TestRunner, TestConfig, TestPhase, TestResult, create_test_config_from_file
     from config.config_manager import get_config_manager
+    # test_button is optional for now
+    try:
+        from ui.test_button import TestButton
+    except ImportError:
+        TestButton = None
 
 def is_raspberry_pi():
     """Detect if running on a Raspberry Pi."""
