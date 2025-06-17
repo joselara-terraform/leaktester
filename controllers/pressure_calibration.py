@@ -335,10 +335,10 @@ if __name__ == "__main__":
     print("=== Pressure Calibration Test ===")
     
     try:
-        # Initialize with typical 0-100 PSI transducer
+        # Initialize with 0-1 PSIG transducer
         calibration = PressureCalibration(
             min_pressure_psi=0.0,    # 4mA = 0 PSI
-            max_pressure_psi=15.0   # 20mA = 100 PSI
+            max_pressure_psi=1.0     # 20mA = 1 PSI
         )
         
         print(f"Calibration info: {calibration.get_calibration_info()}")
@@ -350,27 +350,27 @@ if __name__ == "__main__":
         
         for current in test_currents:
             pressure = calibration.current_to_pressure(current)
-            print(f"{current:.1f}mA → {pressure:.1f}PSI")
+            print(f"{current:.1f}mA → {pressure:.3f}PSI")
         
         print("\n--- Live Pressure Reading ---")
         
         # Read actual pressure from ADC
-        for i in range(3):
-            pressure = calibration.read_pressure_psi(num_samples=5)
-            print(f"Reading {i+1}: {pressure:.2f} PSI")
+        for i in range(5):
+            pressure = calibration.read_pressure_psi(num_samples=10)
+            print(f"Reading {i+1}: {pressure:.4f} PSI")
             time.sleep(1)
         
         print("\n--- Multi-point Calibration Test ---")
         
-        # Add some calibration points (simulated)
+        # Add some calibration points for 0-1 PSI range
         calibration.add_calibration_point(4.0, 0.0)    # 0 PSI at 4mA
-        calibration.add_calibration_point(12.0, 50.0)  # 50 PSI at 12mA  
-        calibration.add_calibration_point(20.0, 100.0) # 100 PSI at 20mA
+        calibration.add_calibration_point(12.0, 0.5)   # 0.5 PSI at 12mA  
+        calibration.add_calibration_point(20.0, 1.0)   # 1.0 PSI at 20mA
         
         # Test conversion with multi-point calibration
         for current in test_currents:
             pressure = calibration.current_to_pressure(current)
-            print(f"{current:.1f}mA → {pressure:.1f}PSI (multi-point)")
+            print(f"{current:.1f}mA → {pressure:.3f}PSI (multi-point)")
         
         print("\n--- Calibration Validation ---")
         
@@ -382,6 +382,7 @@ if __name__ == "__main__":
                 print(f"{key}: {value}")
         
         print("\n✓ Pressure calibration test completed successfully")
+        print("✓ Configured for 0-1 PSIG pressure transducer")
         
     except Exception as e:
         print(f"✗ Pressure calibration test failed: {e}")
