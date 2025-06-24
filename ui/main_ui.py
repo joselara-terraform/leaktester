@@ -177,9 +177,6 @@ class MainUI:
         
         # Right panel - Test Control and Results
         self._create_right_panel(main_frame)
-        
-        # Bottom status bar
-        self._create_status_bar(main_frame)
     
     def _create_header(self, parent):
         """Create the header section."""
@@ -196,15 +193,31 @@ class MainUI:
         )
         title_label.pack(pady=15)
         
-        # Current time
+        # Current time and exit button container
+        time_container = tk.Frame(header_frame, bg='#34495e')
+        time_container.pack()
+        
         self.time_label = tk.Label(
-            header_frame,
+            time_container,
             text="",
             font=('Arial', 12),
             fg='#bdc3c7',
             bg='#34495e'
         )
-        self.time_label.pack()
+        self.time_label.pack(side='left')
+        
+        # Exit button (development only)
+        if not self.is_pi:
+            exit_button = tk.Button(
+                time_container,
+                text="Exit",
+                font=('Arial', 10),
+                bg='#e74c3c',
+                fg='white',
+                command=self.exit_app
+            )
+            exit_button.pack(side='right', padx=(20, 0))
+        
         self._update_time()
     
     def _create_left_panel(self, parent):
@@ -376,31 +389,7 @@ class MainUI:
         )
         self.last_test_label.pack(anchor='w', padx=10)
     
-    def _create_status_bar(self, parent):
-        """Create the bottom status bar."""
-        status_frame = tk.Frame(parent, bg='#34495e', relief='sunken', bd=2)
-        status_frame.grid(row=2, column=0, columnspan=2, sticky='ew', pady=(20, 0))
-        
-        self.status_label = tk.Label(
-            status_frame,
-            text="System ready",
-            font=('Arial', 12),
-            fg='#95a5a6',
-            bg='#34495e'
-        )
-        self.status_label.pack(side='left', padx=10, pady=5)
-        
-        # Exit button (development only)
-        if not self.is_pi:
-            exit_button = tk.Button(
-                status_frame,
-                text="Exit",
-                font=('Arial', 10),
-                bg='#e74c3c',
-                fg='white',
-                command=self.exit_app
-            )
-            exit_button.pack(side='right', padx=10, pady=2)
+
     
     def _create_pressure_plot(self, parent):
         """Create the pressure vs time matplotlib plot."""
@@ -415,11 +404,13 @@ class MainUI:
         self.ax.grid(True, alpha=0.3, color='white')
         
         # Set fixed axes as requested
-        # X-axis: 0 to test length (we'll update this based on config)
+        # X-axis: 0 to test length (with buffer for phase transitions)
         test_config = self.test_runner.config
         total_test_time = (test_config.fill_time + test_config.stabilize_time + 
                           test_config.test_duration + test_config.exhaust_time)
-        self.ax.set_xlim(0, total_test_time)
+        # Add 10% buffer to ensure full exhaust phase is visible
+        total_test_time_with_buffer = total_test_time * 1.1
+        self.ax.set_xlim(0, total_test_time_with_buffer)
         # Y-axis: 0 to 1 PSI as requested
         self.ax.set_ylim(0, 1.0)
         
@@ -487,8 +478,7 @@ class MainUI:
             texts = [child for child in self.ax.get_children() 
                     if hasattr(child, 'get_text')]
             for text in texts:
-                if text.get_text() in ['FILLING_DUT', 'STABILIZING', 'ISOLATING', 
-                                     'TESTING', 'EVALUATING', 'EXHAUSTING']:
+                if text.get_text() in ['Stabilizing', 'Testing', 'Exhausting']:
                     text.remove()
             
             # Redraw
@@ -648,10 +638,9 @@ class MainUI:
             self.plot_data['test_start_time'] = time.time()
             print("Plot data collection started")
         
-        # Add phase markers for all phases during test
+        # Add phase markers for key phases only
         if self.plot_data['test_active'] and phase_name in [
-            "Filling DUT", "Stabilizing", "Isolating", "Testing", 
-            "Evaluating", "Exhausting"
+            "Stabilizing", "Testing", "Exhausting"
         ]:
             self.root.after(0, self._add_phase_marker, phase_name)
         
@@ -664,7 +653,6 @@ class MainUI:
         """Update test phase display."""
         self.test_phase = phase_name
         self.phase_label.config(text=phase_name)
-        self.status_label.config(text=f"Test in progress: {phase_name}")
         
         # Color coding for phases
         if "cylinders" in phase_name.lower():
@@ -725,7 +713,6 @@ class MainUI:
         # Update statistics display
         duration_text = f" ({duration:.1f}s)" if duration > 0 else ""
         self.last_test_label.config(text=f"Last test: {timestamp}{duration_text}")
-        self.status_label.config(text=f"Test completed: {result_text}")
         
         print(f"Test completed: {result_text} in {duration:.1f}s")
         
@@ -756,9 +743,6 @@ class MainUI:
             minutes = int(final_elapsed // 60)
             seconds = int(final_elapsed % 60)
             self.timer_label.config(text=f"Error: {minutes:02d}:{seconds:02d}")
-        
-        # Update status
-        self.status_label.config(text=f"Test error: {error_msg}")
         
         print(f"Test error: {error_msg}")
     
