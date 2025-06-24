@@ -125,29 +125,33 @@ class MainUI:
         # Get UI configuration
         ui_config = self.config_manager.ui
         
-        # Set window size and fullscreen
-        if self.is_pi and ui_config and ui_config.display.fullscreen_on_pi:
-            pi_res = ui_config.display.pi_resolution
-            self.root.geometry(f"{pi_res[0]}x{pi_res[1]}")
-            self.root.attributes('-fullscreen', True)
-            if not ui_config.display.cursor_visible:
-                self.root.configure(cursor='none')
-        else:
-            # Development or fallback settings
-            # First try to maximize the window
+        # Set window size and maximize/fullscreen
+        # Always try to maximize first (works on both Pi and development systems)
+        try:
+            self.root.state('zoomed')  # Linux/Windows maximize
+            print("Window maximized successfully")
+        except:
             try:
-                self.root.state('zoomed')  # Windows/Linux maximize
+                # macOS maximize alternative
+                self.root.attributes('-zoomed', True)
+                print("Window maximized (macOS mode)")
             except:
-                try:
-                    # macOS maximize alternative
-                    self.root.attributes('-zoomed', True)
-                except:
-                    # If maximization fails, set a large default size
+                # If maximization fails, check for fullscreen on Pi
+                if self.is_pi and ui_config and ui_config.display.fullscreen_on_pi:
+                    pi_res = ui_config.display.pi_resolution
+                    self.root.geometry(f"{pi_res[0]}x{pi_res[1]}")
+                    self.root.attributes('-fullscreen', True)
+                    if not ui_config.display.cursor_visible:
+                        self.root.configure(cursor='none')
+                    print("Window set to fullscreen mode")
+                else:
+                    # Fallback to large window size
                     if ui_config and ui_config.display.window_size:
                         win_size = ui_config.display.window_size
                         self.root.geometry(f"{win_size[0]}x{win_size[1]}")
                     else:
                         self.root.geometry("1200x800")  # Larger default size
+                    print("Window set to fallback size")
         
         # Set background from config
         bg_color = '#2c3e50'  # Default

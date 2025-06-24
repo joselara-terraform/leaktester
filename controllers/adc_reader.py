@@ -292,41 +292,31 @@ class ADCReader:
         """Configure the ADC sample rate for high-speed operation."""
         if self.is_pi and hasattr(self, 'ads'):
             try:
-                # ADS1115 data rate mapping (samples per second)
-                data_rate_map = {
-                    8: 0x00,     # 8 SPS
-                    16: 0x01,    # 16 SPS
-                    32: 0x02,    # 32 SPS
-                    64: 0x03,    # 64 SPS
-                    128: 0x04,   # 128 SPS (default)
-                    250: 0x05,   # 250 SPS
-                    475: 0x06,   # 475 SPS
-                    860: 0x07    # 860 SPS (maximum)
-                }
+                # Valid sample rates for ADS1115
+                valid_rates = [8, 16, 32, 64, 128, 250, 475, 860]
                 
                 # Find closest supported sample rate
-                if self.sample_rate in data_rate_map:
-                    data_rate = data_rate_map[self.sample_rate]
+                if self.sample_rate in valid_rates:
+                    target_rate = self.sample_rate
                 elif self.sample_rate >= 860:
-                    data_rate = data_rate_map[860]
+                    target_rate = 860
                     self.sample_rate = 860
                 else:
                     # Find closest lower rate
-                    for rate in sorted(data_rate_map.keys(), reverse=True):
+                    target_rate = 128  # Default
+                    for rate in sorted(valid_rates, reverse=True):
                         if rate <= self.sample_rate:
-                            data_rate = data_rate_map[rate]
+                            target_rate = rate
                             self.sample_rate = rate
                             break
-                    else:
-                        data_rate = data_rate_map[128]
-                        self.sample_rate = 128
                 
-                # Configure the ADS1115 data rate
-                self.ads.data_rate = data_rate
+                # Set the data rate directly (library expects SPS value, not register value)
+                self.ads.data_rate = target_rate
                 logger.info(f"✓ ADC sample rate configured to {self.sample_rate} SPS")
                 
             except Exception as e:
                 logger.warning(f"Could not configure sample rate: {e}")
+                logger.info(f"Using default sample rate instead")
     
     def enable_high_speed_mode(self, enable: bool = True):
         """
