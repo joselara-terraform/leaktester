@@ -125,42 +125,47 @@ class MainUI:
         # Get UI configuration
         ui_config = self.config_manager.ui
         
-        # Set window size - optimized for Raspberry Pi only
+        # Set window size - Raspberry Pi specific approach
         if self.is_pi:
-            # On Raspberry Pi - try multiple maximization methods
+            # Force window to be created first, then get actual screen dimensions
+            self.root.update_idletasks()  # Ensure window is created
+            
+            # Get actual screen dimensions
+            screen_width = self.root.winfo_screenwidth()
+            screen_height = self.root.winfo_screenheight()
+            
+            print(f"Detected screen size: {screen_width}x{screen_height}")
+            
+            # Check if fullscreen is configured
             if ui_config and ui_config.display.fullscreen_on_pi:
-                # Use fullscreen if configured
-                pi_res = ui_config.display.pi_resolution
-                self.root.geometry(f"{pi_res[0]}x{pi_res[1]}")
                 self.root.attributes('-fullscreen', True)
                 if not ui_config.display.cursor_visible:
                     self.root.configure(cursor='none')
                 print("Window set to fullscreen mode")
             else:
-                # Try different methods to maximize on Pi
+                # Force window to fill entire screen
+                self.root.geometry(f"{screen_width}x{screen_height}+0+0")
+                
+                # Additional Pi-specific maximization attempts
                 try:
-                    # Method 1: Try zoomed state
-                    self.root.state('zoomed')
-                    print("Window maximized using zoomed state")
+                    # Remove window decorations and maximize
+                    self.root.wm_attributes('-type', 'splash')  # Remove decorations on X11
                 except:
-                    try:
-                        # Method 2: Get screen dimensions and set geometry
-                        screen_width = self.root.winfo_screenwidth()
-                        screen_height = self.root.winfo_screenheight()
-                        self.root.geometry(f"{screen_width}x{screen_height}+0+0")
-                        print(f"Window maximized using screen dimensions: {screen_width}x{screen_height}")
-                    except:
-                        # Method 3: Use Pi resolution from config
-                        if ui_config and ui_config.display.pi_resolution:
-                            pi_res = ui_config.display.pi_resolution
-                            self.root.geometry(f"{pi_res[0]}x{pi_res[1]}+0+0")
-                            print(f"Window set to Pi resolution: {pi_res[0]}x{pi_res[1]}")
-                        else:
-                            # Fallback for typical Pi touchscreen
-                            self.root.geometry("800x480+0+0")
-                            print("Window set to default Pi touchscreen size: 800x480")
+                    pass
+                
+                try:
+                    # Try to force maximized state
+                    self.root.state('zoomed')
+                except:
+                    pass
+                
+                # Ensure window stays on top and fills screen
+                self.root.lift()
+                self.root.focus_force()
+                
+                print(f"Window forced to screen size: {screen_width}x{screen_height}")
         else:
-            # Development system fallback (shouldn't be used based on user comment)
+            # Development system fallback
             self.root.geometry("1200x800")
             print("Development mode: Window set to 1200x800")
         
