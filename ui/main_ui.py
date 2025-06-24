@@ -134,19 +134,20 @@ class MainUI:
                 self.root.configure(cursor='none')
         else:
             # Development or fallback settings
-            if ui_config and ui_config.display.window_size:
-                win_size = ui_config.display.window_size
-                self.root.geometry(f"{win_size[0]}x{win_size[1]}")
-            else:
-                self.root.geometry("900x600")
-            
-            # Maximize window on development systems
-            self.root.state('zoomed')  # Windows/Linux maximize
+            # First try to maximize the window
             try:
-                # macOS maximize alternative
-                self.root.attributes('-zoomed', True)
+                self.root.state('zoomed')  # Windows/Linux maximize
             except:
-                pass
+                try:
+                    # macOS maximize alternative
+                    self.root.attributes('-zoomed', True)
+                except:
+                    # If maximization fails, set a large default size
+                    if ui_config and ui_config.display.window_size:
+                        win_size = ui_config.display.window_size
+                        self.root.geometry(f"{win_size[0]}x{win_size[1]}")
+                    else:
+                        self.root.geometry("1200x800")  # Larger default size
         
         # Set background from config
         bg_color = '#2c3e50'  # Default
