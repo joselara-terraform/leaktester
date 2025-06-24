@@ -412,7 +412,7 @@ class MainUI:
         self.timer_label = tk.Label(
             stats_frame,
             text="Elapsed: 00:00",
-            font=('Arial', 48, 'bold'),
+            font=('Arial', 36, 'bold'),
             fg='#3498db',
             bg='#2c3e50'
         )
@@ -422,7 +422,7 @@ class MainUI:
         self.pressure_decay_label = tk.Label(
             stats_frame,
             text="Pressure Decay: —",
-            font=('Arial', 48, 'bold'),
+            font=('Arial', 36, 'bold'),
             fg='#f39c12',
             bg='#2c3e50'
         )
@@ -432,7 +432,7 @@ class MainUI:
         self.leak_rate_label = tk.Label(
             stats_frame,
             text="Leak Rate: —",
-            font=('Arial', 48, 'bold'),
+            font=('Arial', 36, 'bold'),
             fg='#e74c3c',
             bg='#2c3e50'
         )
@@ -644,7 +644,7 @@ class MainUI:
             
             # Update display
             self.pressure_decay_label.config(
-                text=f"Pressure Decay: {self.current_pressure_decay:.6f} PSI/s"
+                text=f"Pressure Decay: {self.current_pressure_decay:.4f} PSI/s"
             )
             self.leak_rate_label.config(
                 text=f"Leak Rate: {self.current_leak_rate:.3f} sccm"
@@ -884,7 +884,7 @@ class MainUI:
             
             # Update displays with final values
             self.pressure_decay_label.config(
-                text=f"Final Decay: {self.final_pressure_decay:.6f} PSI/s"
+                text=f"Final Decay: {self.final_pressure_decay:.4f} PSI/s"
             )
             self.leak_rate_label.config(
                 text=f"Final Rate: {final_leak_rate:.3f} sccm"
