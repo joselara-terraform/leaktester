@@ -562,7 +562,7 @@ class MainUI:
                 self.current_pressure = pressure
                 
                 # Update pressure display
-                self.pressure_label.config(text=f"{pressure:.2f}")
+                self.pressure_label.config(text=f"{pressure:.4f}")
                 
                 # Color based on pressure level
                 if pressure < 1.0:
