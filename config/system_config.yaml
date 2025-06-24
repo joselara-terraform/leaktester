@@ -57,7 +57,7 @@ pressure_transducer:
     adc_range_20ma: 32154         # Raw ADC value at 20mA
     
     # High-speed data collection settings
-    high_speed_mode: false         # Enable for maximum sampling rate
+    high_speed_mode: true          # Enable for maximum sampling rate
     single_shot_mode: false        # Continuous vs single-shot conversion
     i2c_frequency: 400000          # I2C bus frequency (400kHz fast mode)
 
@@ -110,9 +110,9 @@ ui:
   
   # Update rates
   update_rates:
-    pressure_update_hz: 4          # Pressure reading frequency
+    pressure_update_hz: 50         # Pressure reading frequency (increased for high-speed)
     timer_update_hz: 1             # Timer display update frequency
-    ui_refresh_ms: 250             # UI refresh interval
+    ui_refresh_ms: 20              # UI refresh interval (50 Hz for smooth plot updates)
   
   # Colors (hex codes)
   colors:
@@ -174,14 +174,14 @@ system:
   graceful_shutdown: true          # Enable graceful shutdown on errors
   
   # Performance
-  pressure_reading_samples: 3      # Number of samples to average
-  pressure_reading_delay: 0.05     # Delay between pressure samples
+  pressure_reading_samples: 1      # Number of samples to average (reduced for max speed)
+  pressure_reading_delay: 0.001    # Minimal delay between pressure samples (1ms)
   
   # High-speed data collection
-  enable_burst_sampling: false     # Enable burst mode for high-speed data collection
-  burst_sample_count: 100          # Number of samples in burst mode
-  burst_sample_rate: 500           # Target samples per second in burst mode
-  continuous_sampling: false       # Enable continuous sampling (no delays)
+  enable_burst_sampling: true      # Enable burst mode for high-speed data collection
+  burst_sample_count: 10           # Number of samples in burst mode (reduced for lower latency)
+  burst_sample_rate: 860           # Target samples per second in burst mode (max ADC rate)
+  continuous_sampling: true        # Enable continuous sampling (no delays)
 
 # Development Configuration
 development:

@@ -38,7 +38,7 @@ class ADCReader:
                  i2c_address: int = 0x48,
                  bus_number: int = 1,
                  gain: int = 2,
-                 sample_rate: int = 128):
+                 sample_rate: int = 860):
         """
         Initialize the ADC reader.
         
@@ -46,13 +46,17 @@ class ADCReader:
             i2c_address: I2C address of the ADC (default 0x48)
             bus_number: I2C bus number (default 1)
             gain: ADC gain setting (default 2 for 4-20mA module)
-            sample_rate: Sample rate in samples per second
+            sample_rate: Sample rate in samples per second (max 860 for ADS1115)
         """
         self.i2c_address = i2c_address
         self.bus_number = bus_number
         self.gain = gain
         self.sample_rate = sample_rate
         self.is_pi = is_raspberry_pi()
+        
+        # High-speed sampling settings
+        self.high_speed_mode = False
+        self.continuous_mode = False
         
         # Initialize ADC
         self._initialize_adc()
@@ -78,10 +82,14 @@ class ADCReader:
                 # Configure gain (determines voltage range)
                 self.ads.gain = self.gain
                 
+                # Configure sample rate for high-speed operation
+                self._configure_sample_rate()
+                
                 # Create analog input on channel 0 (for pressure transducer)
                 self.channel = AnalogIn(self.ads, ADS.P0)
                 
                 logger.info("✓ ADS1115 initialized successfully")
+                logger.info(f"✓ Configured for {self.sample_rate} SPS operation")
                 
             except ImportError as e:
                 logger.error(f"Failed to import ADS1115 libraries: {e}")
@@ -271,12 +279,131 @@ class ADCReader:
             "gain": self.gain,
             "voltage_range": "±2.048V" if self.gain == 2 else "±4.096V",
             "sample_rate": self.sample_rate,
+            "high_speed_mode": self.high_speed_mode,
+            "continuous_mode": self.continuous_mode,
             "is_pi": self.is_pi,
             "mock_mode": not self.is_pi,
             "module_type": "4-20mA Current Loop Receiver",
             "adc_range_4ma": 6430,
             "adc_range_20ma": 32154
         }
+    
+    def _configure_sample_rate(self):
+        """Configure the ADC sample rate for high-speed operation."""
+        if self.is_pi and hasattr(self, 'ads'):
+            try:
+                # ADS1115 data rate mapping (samples per second)
+                data_rate_map = {
+                    8: 0x00,     # 8 SPS
+                    16: 0x01,    # 16 SPS
+                    32: 0x02,    # 32 SPS
+                    64: 0x03,    # 64 SPS
+                    128: 0x04,   # 128 SPS (default)
+                    250: 0x05,   # 250 SPS
+                    475: 0x06,   # 475 SPS
+                    860: 0x07    # 860 SPS (maximum)
+                }
+                
+                # Find closest supported sample rate
+                if self.sample_rate in data_rate_map:
+                    data_rate = data_rate_map[self.sample_rate]
+                elif self.sample_rate >= 860:
+                    data_rate = data_rate_map[860]
+                    self.sample_rate = 860
+                else:
+                    # Find closest lower rate
+                    for rate in sorted(data_rate_map.keys(), reverse=True):
+                        if rate <= self.sample_rate:
+                            data_rate = data_rate_map[rate]
+                            self.sample_rate = rate
+                            break
+                    else:
+                        data_rate = data_rate_map[128]
+                        self.sample_rate = 128
+                
+                # Configure the ADS1115 data rate
+                self.ads.data_rate = data_rate
+                logger.info(f"✓ ADC sample rate configured to {self.sample_rate} SPS")
+                
+            except Exception as e:
+                logger.warning(f"Could not configure sample rate: {e}")
+    
+    def enable_high_speed_mode(self, enable: bool = True):
+        """
+        Enable or disable high-speed sampling mode.
+        
+        Args:
+            enable: True to enable high-speed mode, False to disable
+        """
+        self.high_speed_mode = enable
+        if enable:
+            logger.info("✓ High-speed sampling mode enabled")
+        else:
+            logger.info("✓ High-speed sampling mode disabled")
+    
+    def enable_continuous_mode(self, enable: bool = True):
+        """
+        Enable or disable continuous sampling mode.
+        
+        Args:
+            enable: True for continuous sampling, False for single-shot
+        """
+        self.continuous_mode = enable
+        if enable:
+            logger.info("✓ Continuous sampling mode enabled")
+        else:
+            logger.info("✓ Single-shot sampling mode enabled")
+    
+    def read_current_fast(self) -> float:
+        """
+        Read current with minimal latency for high-speed applications.
+        
+        Returns:
+            float: Current in milliamps
+        """
+        # Single read with no averaging for maximum speed
+        raw_value = self.read_raw_value()
+        current_ma = self.raw_adc_to_current_ma(raw_value)
+        return current_ma
+    
+    def read_burst_samples(self, num_samples: int = 10, target_rate_hz: float = 860) -> list:
+        """
+        Read a burst of samples at high speed.
+        
+        Args:
+            num_samples: Number of samples to collect
+            target_rate_hz: Target sampling rate in Hz
+            
+        Returns:
+            list: List of current readings in mA
+        """
+        samples = []
+        sample_interval = 1.0 / target_rate_hz if target_rate_hz > 0 else 0.001
+        
+        # Clamp to maximum ADC rate
+        if sample_interval < (1.0 / 860):
+            sample_interval = 1.0 / 860
+        
+        start_time = time.time()
+        
+        for i in range(num_samples):
+            current = self.read_current_fast()
+            samples.append(current)
+            
+            # Precise timing for next sample
+            if i < num_samples - 1:  # Don't delay after last sample
+                next_sample_time = start_time + (i + 1) * sample_interval
+                sleep_time = next_sample_time - time.time()
+                if sleep_time > 0:
+                    time.sleep(sleep_time)
+        
+        actual_duration = time.time() - start_time
+        actual_rate = (num_samples - 1) / actual_duration if actual_duration > 0 else 0
+        
+        if num_samples > 1:
+            logger.debug(f"Burst sampling: {num_samples} samples in {actual_duration:.3f}s ({actual_rate:.1f} Hz)")
+        
+        return samples
 
 if __name__ == "__main__":
     # Test the ADC reader

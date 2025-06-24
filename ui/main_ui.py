@@ -553,8 +553,8 @@ class MainUI:
         """Update pressure reading (runs in UI thread)."""
         if self.pressure_update_running:
             try:
-                # Read pressure
-                pressure = self.pressure_calibration.read_pressure_psi(num_samples=3)
+                # Read pressure using optimized high-speed sampling
+                pressure = self.pressure_calibration.read_pressure_psi()  # Uses config-optimized settings
                 self.current_pressure = pressure
                 
                 # Update pressure display

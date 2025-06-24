@@ -67,7 +67,24 @@ class PressureCalibration:
         if min_pressure_psi is None or max_pressure_psi is None or min_current_ma is None or max_current_ma is None:
             config_data = config_manager.get_pressure_calibration_config()
             
-        self.adc_reader = adc_reader or ADCReader()
+        # Initialize ADC with high-speed configuration if not provided
+        if adc_reader is None:
+            adc_config = config_manager.pressure_transducer.adc
+            self.adc_reader = ADCReader(
+                i2c_address=adc_config.i2c_address,
+                bus_number=adc_config.bus_number,
+                gain=adc_config.gain,
+                sample_rate=adc_config.sample_rate
+            )
+            
+            # Configure high-speed mode if enabled
+            if adc_config.high_speed_mode:
+                self.adc_reader.enable_high_speed_mode(True)
+            if not adc_config.single_shot_mode:
+                self.adc_reader.enable_continuous_mode(True)
+        else:
+            self.adc_reader = adc_reader
+            
         self.min_pressure_psi = min_pressure_psi if min_pressure_psi is not None else config_data['min_pressure_psi']
         self.max_pressure_psi = max_pressure_psi if max_pressure_psi is not None else config_data['max_pressure_psi']
         self.min_current_ma = min_current_ma if min_current_ma is not None else config_data['min_current_ma']
@@ -188,21 +205,41 @@ class PressureCalibration:
         """
         return self.current_to_pressure_multipoint(current_ma)
     
-    def read_pressure_psi(self, num_samples: int = 5) -> float:
+    def read_pressure_psi(self, num_samples: int = None) -> float:
         """
-        Read current pressure in PSI.
+        Read current pressure in PSI using optimized high-speed sampling.
         
         Args:
-            num_samples: Number of samples to average
+            num_samples: Number of samples to average (uses config default if None)
             
         Returns:
             float: Current pressure in PSI
         """
-        # Read current from ADC
+        # Get configuration for sampling behavior
+        config_manager = get_config_manager()
+        system_config = config_manager.system
+        
+        # Use config default if not specified
+        if num_samples is None:
+            num_samples = system_config.pressure_reading_samples
+        
+        # Read current from ADC using optimized methods
         if num_samples == 1:
-            current_ma = self.adc_reader.read_current_ma()
+            # Single fast read for maximum speed
+            current_ma = self.adc_reader.read_current_fast()
+        elif system_config.enable_burst_sampling and num_samples <= system_config.burst_sample_count:
+            # Use burst sampling for small sample counts
+            samples = self.adc_reader.read_burst_samples(
+                num_samples=num_samples, 
+                target_rate_hz=system_config.burst_sample_rate
+            )
+            # Convert to pressure and average
+            pressures = [self.current_to_pressure(current) for current in samples]
+            return sum(pressures) / len(pressures)
         else:
-            avg_current, _, _ = self.adc_reader.read_multiple_samples(num_samples, delay=0.05)
+            # Fall back to traditional multi-sample reading with configured delay
+            delay = system_config.pressure_reading_delay if not system_config.continuous_sampling else 0.001
+            avg_current, _, _ = self.adc_reader.read_multiple_samples(num_samples, delay=delay)
             current_ma = avg_current
         
         # Convert to pressure
