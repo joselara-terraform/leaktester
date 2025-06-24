@@ -14,6 +14,12 @@ import time
 import threading
 from datetime import datetime
 from typing import Optional
+import matplotlib
+matplotlib.use('TkAgg')  # Use TkAgg backend for tkinter
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.figure import Figure
+import numpy as np
 
 # Handle imports for both module use and standalone testing
 try:
@@ -90,6 +96,18 @@ class MainUI:
         # Test timer variables
         self.test_start_time = None
         self.timer_update_running = False
+        
+        # Plot data variables
+        self.plot_data = {
+            'times': [],
+            'pressures': [],
+            'phase_markers': {},  # phase_name: time
+            'test_active': False,
+            'test_start_time': None
+        }
+        self.figure = None
+        self.canvas = None
+        self.ax = None
         
         # Setup UI
         self._setup_window()
@@ -247,37 +265,20 @@ class MainUI:
         )
         self.phase_label.pack(pady=20)
         
-        # System info section
-        info_frame = tk.LabelFrame(
+        # Pressure vs Time Plot section
+        plot_frame = tk.LabelFrame(
             left_frame,
-            text="SYSTEM INFO",
+            text="PRESSURE vs TIME",
             font=('Arial', 14, 'bold'),
             fg='white',
             bg='#2c3e50',
             relief='raised',
             bd=2
         )
-        info_frame.pack(fill='both', expand=True)
+        plot_frame.pack(fill='both', expand=True)
         
-        # Platform info
-        platform_text = f"Platform: {'Raspberry Pi' if self.is_pi else 'Development'}"
-        tk.Label(
-            info_frame,
-            text=platform_text,
-            font=('Arial', 10),
-            fg='#95a5a6',
-            bg='#2c3e50'
-        ).pack(anchor='w', padx=10, pady=5)
-        
-        # Pressure range info
-        range_text = f"Range: 0-15 PSI"
-        tk.Label(
-            info_frame,
-            text=range_text,
-            font=('Arial', 10),
-            fg='#95a5a6',
-            bg='#2c3e50'
-        ).pack(anchor='w', padx=10)
+        # Create matplotlib figure and canvas
+        self._create_pressure_plot(plot_frame)
     
     def _create_right_panel(self, parent):
         """Create the right panel with test controls and results."""
@@ -401,6 +402,124 @@ class MainUI:
             )
             exit_button.pack(side='right', padx=10, pady=2)
     
+    def _create_pressure_plot(self, parent):
+        """Create the pressure vs time matplotlib plot."""
+        # Create figure with dark theme
+        self.figure = Figure(figsize=(6, 4), dpi=100, facecolor='#2c3e50')
+        self.ax = self.figure.add_subplot(111, facecolor='#34495e')
+        
+        # Set plot styling
+        self.ax.set_xlabel('Time (seconds)', color='white', fontsize=10)
+        self.ax.set_ylabel('Pressure (PSI)', color='white', fontsize=10)
+        self.ax.tick_params(colors='white', labelsize=8)
+        self.ax.grid(True, alpha=0.3, color='white')
+        
+        # Set fixed axes as requested
+        # X-axis: 0 to test length (we'll update this based on config)
+        test_config = self.test_runner.config
+        total_test_time = (test_config.fill_time + test_config.stabilize_time + 
+                          test_config.test_duration + test_config.exhaust_time)
+        self.ax.set_xlim(0, total_test_time)
+        # Y-axis: 0 to 1 PSI as requested
+        self.ax.set_ylim(0, 1.0)
+        
+        # Initialize empty plot
+        self.pressure_line, = self.ax.plot([], [], 'cyan', linewidth=2, label='Pressure')
+        self.phase_lines = {}  # Will store vertical lines for phases
+        
+        # Add legend
+        self.ax.legend(loc='upper right', fancybox=True, framealpha=0.8)
+        
+        # Adjust layout to prevent label cutoff
+        self.figure.tight_layout(pad=1.0)
+        
+        # Create canvas and add to parent
+        self.canvas = FigureCanvasTkAgg(self.figure, parent)
+        self.canvas.get_tk_widget().pack(fill='both', expand=True, padx=5, pady=5)
+        
+        # Initial draw
+        self.canvas.draw()
+    
+    def _update_pressure_plot(self):
+        """Update the pressure plot with current data."""
+        if not self.plot_data['test_active'] or not self.ax:
+            return
+        
+        # Update pressure line
+        self.pressure_line.set_data(self.plot_data['times'], self.plot_data['pressures'])
+        
+        # Update phase marker lines
+        for phase_name, phase_time in self.plot_data['phase_markers'].items():
+            if phase_name not in self.phase_lines:
+                # Create new vertical line for this phase
+                line = self.ax.axvline(x=phase_time, color='yellow', linestyle='--', 
+                                     alpha=0.7, linewidth=1)
+                self.phase_lines[phase_name] = line
+                
+                # Add text label for phase (positioned above the line)
+                self.ax.text(phase_time, 0.9, phase_name, rotation=90, 
+                           verticalalignment='bottom', horizontalalignment='right',
+                           fontsize=8, color='yellow', alpha=0.8)
+        
+        # Redraw canvas
+        self.canvas.draw()
+    
+    def _reset_pressure_plot(self):
+        """Reset the pressure plot data and display."""
+        self.plot_data = {
+            'times': [],
+            'pressures': [],
+            'phase_markers': {},
+            'test_active': False,
+            'test_start_time': None
+        }
+        
+        if self.ax:
+            # Clear existing data
+            self.pressure_line.set_data([], [])
+            
+            # Remove phase lines
+            for line in self.phase_lines.values():
+                line.remove()
+            self.phase_lines.clear()
+            
+            # Clear text annotations
+            texts = [child for child in self.ax.get_children() 
+                    if hasattr(child, 'get_text')]
+            for text in texts:
+                if text.get_text() in ['FILLING_DUT', 'STABILIZING', 'ISOLATING', 
+                                     'TESTING', 'EVALUATING', 'EXHAUSTING']:
+                    text.remove()
+            
+            # Redraw
+            self.canvas.draw()
+    
+    def _add_pressure_data_point(self, pressure):
+        """Add a new pressure data point to the plot."""
+        if not self.plot_data['test_active']:
+            return
+        
+        current_time = time.time()
+        elapsed_time = current_time - self.plot_data['test_start_time']
+        
+        self.plot_data['times'].append(elapsed_time)
+        self.plot_data['pressures'].append(pressure)
+        
+        # Keep only recent data to prevent memory buildup
+        max_points = 1000
+        if len(self.plot_data['times']) > max_points:
+            self.plot_data['times'] = self.plot_data['times'][-max_points:]
+            self.plot_data['pressures'] = self.plot_data['pressures'][-max_points:]
+    
+    def _add_phase_marker(self, phase_name):
+        """Add a phase marker to the plot."""
+        if not self.plot_data['test_active']:
+            return
+        
+        current_time = time.time()
+        elapsed_time = current_time - self.plot_data['test_start_time']
+        self.plot_data['phase_markers'][phase_name] = elapsed_time
+    
     def _update_time(self):
         """Update the time display."""
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -462,6 +581,11 @@ class MainUI:
                 
                 self.pressure_label.config(fg=color)
                 
+                # Add data point to plot if test is active
+                if self.plot_data['test_active']:
+                    self._add_pressure_data_point(pressure)
+                    self._update_pressure_plot()
+                
             except Exception as e:
                 print(f"Pressure update error: {e}")
                 self.pressure_label.config(text="ERROR", fg='#e74c3c')
@@ -484,6 +608,9 @@ class MainUI:
         # Start test timer
         self.test_start_time = time.time()
         self._start_timer_updates()
+        
+        # Reset and prepare plot for new test
+        self._reset_pressure_plot()
         
         # Update UI
         self.test_button.config(text="TESTING...", bg='#f39c12', state='disabled')
@@ -511,6 +638,27 @@ class MainUI:
         """Handle test phase change from TestRunner."""
         # Update UI in main thread
         self.root.after(0, lambda: self._update_test_phase(phase.value))
+        
+        # Handle plot activation/deactivation and phase markers
+        phase_name = phase.value
+        
+        # Start plotting when filling begins
+        if phase_name == "Filling DUT" and not self.plot_data['test_active']:
+            self.plot_data['test_active'] = True
+            self.plot_data['test_start_time'] = time.time()
+            print("Plot data collection started")
+        
+        # Add phase markers for all phases during test
+        if self.plot_data['test_active'] and phase_name in [
+            "Filling DUT", "Stabilizing", "Isolating", "Testing", 
+            "Evaluating", "Exhausting"
+        ]:
+            self.root.after(0, self._add_phase_marker, phase_name)
+        
+        # Stop plotting when exhausting is complete
+        if phase_name == "Retracting cylinders" and self.plot_data['test_active']:
+            self.plot_data['test_active'] = False
+            print("Plot data collection stopped")
     
     def _update_test_phase(self, phase_name: str):
         """Update test phase display."""
