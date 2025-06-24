@@ -93,6 +93,13 @@ class MainUI:
         self.last_test_time = None
         self.last_test_duration = None
         
+        # Real-time leak testing variables
+        self.test_volume_cc = self._get_test_volume_from_config()  # Load from config
+        self.current_pressure_decay = 0.0  # dP/dT in PSI/s
+        self.current_leak_rate = 0.0  # Leak rate in sccm
+        self.final_pressure_decay = 0.0  # Final test phase slope
+        self.test_phase_data = {'times': [], 'pressures': []}  # Data for test phase only
+        
         # Test timer variables
         self.test_start_time = None
         self.timer_update_running = False
@@ -117,6 +124,7 @@ class MainUI:
         print("Main UI initialized")
         print(f"Platform: {'Raspberry Pi' if self.is_pi else 'Development'}")
         print("TestRunner integrated with UI")
+        print(f"Test volume configured: {self.test_volume_cc} cc")
     
     def _setup_window(self):
         """Configure the main window."""
@@ -178,6 +186,26 @@ class MainUI:
         
         # Bind ESC to exit (for development)
         self.root.bind('<Escape>', lambda e: self.exit_app())
+    
+    def _get_test_volume_from_config(self):
+        """Get test volume from configuration, with default fallback."""
+        try:
+            # Try to get from test parameters
+            volume = self.config_manager.get_nested_parameter('test_parameters', 'volume', 'test_volume_cc', None)
+            if volume is not None:
+                return float(volume)
+            
+            # Try alternative config location
+            volume = self.config_manager.get_parameter('leak_test', 'volume_cc', None)
+            if volume is not None:
+                return float(volume)
+            
+            # Default fallback
+            return 100.0
+            
+        except Exception as e:
+            print(f"Could not load test volume from config: {e}")
+            return 100.0  # Default 100 cc
     
     def _create_widgets(self):
         """Create and layout all GUI widgets."""
@@ -371,7 +399,7 @@ class MainUI:
         # Test statistics section
         stats_frame = tk.LabelFrame(
             right_frame,
-            text="TEST STATISTICS",
+            text="LEAK TEST ANALYSIS",
             font=('Arial', 14, 'bold'),
             fg='white',
             bg='#2c3e50',
@@ -390,25 +418,35 @@ class MainUI:
         )
         self.timer_label.pack(anchor='w', padx=10, pady=5)
         
-        # Test count
-        self.test_count_label = tk.Label(
+        # Pressure decay rate
+        self.pressure_decay_label = tk.Label(
             stats_frame,
-            text=f"Tests run: {self.test_count}",
+            text="Pressure Decay: —",
             font=('Arial', 12),
-            fg='#95a5a6',
+            fg='#f39c12',
             bg='#2c3e50'
         )
-        self.test_count_label.pack(anchor='w', padx=10, pady=5)
+        self.pressure_decay_label.pack(anchor='w', padx=10, pady=2)
         
-        # Last test time
-        self.last_test_label = tk.Label(
+        # Leak rate
+        self.leak_rate_label = tk.Label(
             stats_frame,
-            text="Last test: —",
+            text="Leak Rate: —",
             font=('Arial', 12),
+            fg='#e74c3c',
+            bg='#2c3e50'
+        )
+        self.leak_rate_label.pack(anchor='w', padx=10, pady=2)
+        
+        # Test volume (configurable)
+        self.volume_label = tk.Label(
+            stats_frame,
+            text=f"Test Volume: {self.test_volume_cc:.0f} cc",
+            font=('Arial', 10),
             fg='#95a5a6',
             bg='#2c3e50'
         )
-        self.last_test_label.pack(anchor='w', padx=10)
+        self.volume_label.pack(anchor='w', padx=10, pady=2)
     
 
     
@@ -531,6 +569,96 @@ class MainUI:
         elapsed_time = current_time - self.plot_data['test_start_time']
         self.plot_data['phase_markers'][phase_name] = elapsed_time
     
+    def _calculate_pressure_decay(self, times, pressures):
+        """
+        Calculate pressure decay rate (dP/dT) using linear regression.
+        
+        Args:
+            times: List of time values in seconds
+            pressures: List of pressure values in PSI
+            
+        Returns:
+            float: Pressure decay rate in PSI/s (negative value indicates decay)
+        """
+        if len(times) < 2 or len(pressures) < 2:
+            return 0.0
+        
+        try:
+            # Use numpy linear regression to get best fit slope
+            times_array = np.array(times)
+            pressures_array = np.array(pressures)
+            
+            # Calculate slope (dP/dT)
+            slope, intercept = np.polyfit(times_array, pressures_array, 1)
+            
+            return slope  # Returns PSI/s (negative for pressure decay)
+            
+        except Exception as e:
+            print(f"Pressure decay calculation error: {e}")
+            return 0.0
+    
+    def _calculate_leak_rate(self, pressure_decay_psi_s):
+        """
+        Calculate leak rate in sccm from pressure decay.
+        
+        Formula: LR [sccm] = V[cc] * dP/dT * 60[s/min] / 14.69[psi]
+        
+        Args:
+            pressure_decay_psi_s: Pressure decay rate in PSI/s
+            
+        Returns:
+            float: Leak rate in sccm
+        """
+        try:
+            # Apply the provided formula
+            leak_rate_sccm = (self.test_volume_cc * 
+                             pressure_decay_psi_s * 
+                             60.0) / 14.69
+            
+            return abs(leak_rate_sccm)  # Return absolute value (positive leak rate)
+            
+        except Exception as e:
+            print(f"Leak rate calculation error: {e}")
+            return 0.0
+    
+    def _update_leak_analysis(self):
+        """Update real-time leak analysis during testing."""
+        if not self.plot_data['test_active']:
+            # Reset displays when not testing
+            self.pressure_decay_label.config(text="Pressure Decay: —")
+            self.leak_rate_label.config(text="Leak Rate: —")
+            return
+        
+        # Only calculate during the actual test phase
+        if (len(self.test_phase_data['times']) >= 2 and 
+            self.test_phase in ['Testing']):
+            
+            # Calculate real-time pressure decay
+            self.current_pressure_decay = self._calculate_pressure_decay(
+                self.test_phase_data['times'], 
+                self.test_phase_data['pressures']
+            )
+            
+            # Calculate real-time leak rate
+            self.current_leak_rate = self._calculate_leak_rate(self.current_pressure_decay)
+            
+            # Update display
+            self.pressure_decay_label.config(
+                text=f"Pressure Decay: {self.current_pressure_decay:.6f} PSI/s"
+            )
+            self.leak_rate_label.config(
+                text=f"Leak Rate: {self.current_leak_rate:.3f} sccm"
+            )
+        
+        elif self.test_phase in ['Stabilizing', 'Isolating']:
+            # Show preparing message during pre-test phases
+            self.pressure_decay_label.config(text="Pressure Decay: Preparing...")
+            self.leak_rate_label.config(text="Leak Rate: Preparing...")
+        else:
+            # Show waiting message during other phases
+            self.pressure_decay_label.config(text="Pressure Decay: —")
+            self.leak_rate_label.config(text="Leak Rate: —")
+    
     def _update_time(self):
         """Update the time display."""
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -596,6 +724,16 @@ class MainUI:
                 if self.plot_data['test_active']:
                     self._add_pressure_data_point(pressure)
                     self._update_pressure_plot()
+                    
+                    # Add data to test phase tracking if in testing phase
+                    if self.test_phase == "Testing":
+                        current_time = time.time()
+                        elapsed_time = current_time - self.plot_data['test_start_time']
+                        self.test_phase_data['times'].append(elapsed_time)
+                        self.test_phase_data['pressures'].append(pressure)
+                    
+                    # Update leak analysis in real-time
+                    self._update_leak_analysis()
                 
             except Exception as e:
                 print(f"Pressure update error: {e}")
@@ -623,10 +761,15 @@ class MainUI:
         # Reset and prepare plot for new test
         self._reset_pressure_plot()
         
+        # Reset leak analysis data
+        self.test_phase_data = {'times': [], 'pressures': []}
+        self.current_pressure_decay = 0.0
+        self.current_leak_rate = 0.0
+        self.final_pressure_decay = 0.0
+        
         # Update UI
         self.test_button.config(text="TESTING...", bg='#f39c12', state='disabled')
         self.result_label.config(text="—", fg='#95a5a6')
-        self.test_count_label.config(text=f"Tests run: {self.test_count}")
         
         # Start test runner
         threading.Thread(target=self._run_test, daemon=True).start()
@@ -731,9 +874,21 @@ class MainUI:
             seconds = int(final_elapsed % 60)
             self.timer_label.config(text=f"Completed: {minutes:02d}:{seconds:02d}")
         
-        # Update statistics display
-        duration_text = f" ({duration:.1f}s)" if duration > 0 else ""
-        self.last_test_label.config(text=f"Last test: {timestamp}{duration_text}")
+        # Calculate final pressure decay for test phase
+        if len(self.test_phase_data['times']) >= 2:
+            self.final_pressure_decay = self._calculate_pressure_decay(
+                self.test_phase_data['times'], 
+                self.test_phase_data['pressures']
+            )
+            final_leak_rate = self._calculate_leak_rate(self.final_pressure_decay)
+            
+            # Update displays with final values
+            self.pressure_decay_label.config(
+                text=f"Final Decay: {self.final_pressure_decay:.6f} PSI/s"
+            )
+            self.leak_rate_label.config(
+                text=f"Final Rate: {final_leak_rate:.3f} sccm"
+            )
         
         print(f"Test completed: {result_text} in {duration:.1f}s")
         
@@ -764,6 +919,10 @@ class MainUI:
             minutes = int(final_elapsed // 60)
             seconds = int(final_elapsed % 60)
             self.timer_label.config(text=f"Error: {minutes:02d}:{seconds:02d}")
+        
+        # Reset leak analysis displays
+        self.pressure_decay_label.config(text="Pressure Decay: Error")
+        self.leak_rate_label.config(text="Leak Rate: Error")
         
         print(f"Test error: {error_msg}")
     

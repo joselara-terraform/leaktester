@@ -78,6 +78,10 @@ test_parameters:
     pressure_tolerance: 0.05       # Acceptable pressure deviation (PSI)
     max_leak_rate: 0.005           # Maximum acceptable leak rate (PSI/s)
     min_test_pressure: 0.1         # Minimum pressure to start test
+    
+  # Volume parameters
+  volume:
+    test_volume_cc: 100.0          # Test volume in cubic centimeters for leak rate calculation
   
   # Safety parameters
   safety:
