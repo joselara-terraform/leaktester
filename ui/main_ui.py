@@ -412,7 +412,7 @@ class MainUI:
         self.timer_label = tk.Label(
             stats_frame,
             text="Elapsed: 00:00",
-            font=('Arial', 14, 'bold'),
+            font=('Arial', 48, 'bold'),
             fg='#3498db',
             bg='#2c3e50'
         )
@@ -422,7 +422,7 @@ class MainUI:
         self.pressure_decay_label = tk.Label(
             stats_frame,
             text="Pressure Decay: —",
-            font=('Arial', 12),
+            font=('Arial', 48, 'bold'),
             fg='#f39c12',
             bg='#2c3e50'
         )
@@ -432,7 +432,7 @@ class MainUI:
         self.leak_rate_label = tk.Label(
             stats_frame,
             text="Leak Rate: —",
-            font=('Arial', 12),
+            font=('Arial', 48, 'bold'),
             fg='#e74c3c',
             bg='#2c3e50'
         )
