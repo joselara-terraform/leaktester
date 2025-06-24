@@ -69,18 +69,22 @@ class PressureCalibration:
             
         # Initialize ADC with high-speed configuration if not provided
         if adc_reader is None:
-            adc_config = config_manager.pressure_transducer.adc
+            # Get ADC configuration from config manager
+            adc_config_dict = config_manager.get_adc_config_for_reader()
+            pt_config = config_manager.get_system_config('pressure_transducer')
+            adc_settings = pt_config.get('adc', {})
+            
             self.adc_reader = ADCReader(
-                i2c_address=adc_config.i2c_address,
-                bus_number=adc_config.bus_number,
-                gain=adc_config.gain,
-                sample_rate=adc_config.sample_rate
+                i2c_address=adc_config_dict.get('i2c_address', 0x48),
+                bus_number=adc_config_dict.get('bus_number', 1),
+                gain=adc_config_dict.get('gain', 2),
+                sample_rate=adc_config_dict.get('sample_rate', 860)
             )
             
             # Configure high-speed mode if enabled
-            if adc_config.high_speed_mode:
+            if adc_settings.get('high_speed_mode', False):
                 self.adc_reader.enable_high_speed_mode(True)
-            if not adc_config.single_shot_mode:
+            if not adc_settings.get('single_shot_mode', False):
                 self.adc_reader.enable_continuous_mode(True)
         else:
             self.adc_reader = adc_reader
@@ -217,28 +221,32 @@ class PressureCalibration:
         """
         # Get configuration for sampling behavior
         config_manager = get_config_manager()
-        system_config = config_manager.system
+        system_config = config_manager.get_system_config('system')
         
         # Use config default if not specified
         if num_samples is None:
-            num_samples = system_config.pressure_reading_samples
+            num_samples = system_config.get('pressure_reading_samples', 1)
         
         # Read current from ADC using optimized methods
         if num_samples == 1:
             # Single fast read for maximum speed
             current_ma = self.adc_reader.read_current_fast()
-        elif system_config.enable_burst_sampling and num_samples <= system_config.burst_sample_count:
+        elif (system_config.get('enable_burst_sampling', False) and 
+              num_samples <= system_config.get('burst_sample_count', 10)):
             # Use burst sampling for small sample counts
             samples = self.adc_reader.read_burst_samples(
                 num_samples=num_samples, 
-                target_rate_hz=system_config.burst_sample_rate
+                target_rate_hz=system_config.get('burst_sample_rate', 860)
             )
             # Convert to pressure and average
             pressures = [self.current_to_pressure(current) for current in samples]
             return sum(pressures) / len(pressures)
         else:
             # Fall back to traditional multi-sample reading with configured delay
-            delay = system_config.pressure_reading_delay if not system_config.continuous_sampling else 0.001
+            continuous_sampling = system_config.get('continuous_sampling', False)
+            delay = system_config.get('pressure_reading_delay', 0.05)
+            if continuous_sampling:
+                delay = 0.001
             avg_current, _, _ = self.adc_reader.read_multiple_samples(num_samples, delay=delay)
             current_ma = avg_current
         
