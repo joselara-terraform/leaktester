@@ -153,9 +153,6 @@ class TerminalLeakTester:
     
     def _phase_fill(self) -> bool:
         """Phase 1: Fill DUT by opening fill valve."""
-        print(f"\n=== PHASE 1: FILL ({self.fill_time}s) ===")
-        print("Opening fill valve...")
-        
         start_time = time.time()
         
         try:
@@ -168,9 +165,7 @@ class TerminalLeakTester:
             while (time.time() - start_time) < self.fill_time:
                 elapsed = time.time() - start_time
                 self._log_pressure("FILLING", elapsed)
-                time.sleep(0.5)  # Update every 0.5 seconds
-            
-            print("✓ Fill phase completed")
+                time.sleep(0.2)  # High frequency monitoring (5 Hz)
             return True
             
         except Exception as e:
@@ -179,9 +174,6 @@ class TerminalLeakTester:
     
     def _phase_stabilize(self) -> bool:
         """Phase 2: Stabilize pressure with all valves closed."""
-        print(f"\n=== PHASE 2: STABILIZE ({self.stabilize_time}s) ===")
-        print("Closing all valves, allowing pressure to stabilize...")
-        
         start_time = time.time()
         
         try:
@@ -194,9 +186,7 @@ class TerminalLeakTester:
             while (time.time() - start_time) < self.stabilize_time:
                 elapsed = time.time() - start_time
                 self._log_pressure("STABILIZING", elapsed)
-                time.sleep(0.5)
-            
-            print("✓ Stabilization phase completed")
+                time.sleep(0.2)  # High frequency monitoring (5 Hz)
             return True
             
         except Exception as e:
@@ -205,9 +195,6 @@ class TerminalLeakTester:
     
     def _phase_test(self) -> bool:
         """Phase 3: Test phase - monitor pressure decay."""
-        print(f"\n=== PHASE 3: TEST ({self.test_duration}s) ===")
-        print("Starting leak test measurement...")
-        
         start_time = time.time()
         test_times = []
         test_pressures = []
@@ -216,10 +203,6 @@ class TerminalLeakTester:
             # Record initial pressure
             initial_pressure = self._read_pressure()
             self.test_data['start_pressure'] = initial_pressure
-            print(f"Initial pressure: {initial_pressure:.4f} PSI")
-            print()
-            print("Time     | Phase        | Elapsed | Pressure")
-            print("-" * 50)
             
             # Monitor pressure throughout test
             while (time.time() - start_time) < self.test_duration:
@@ -239,10 +222,6 @@ class TerminalLeakTester:
             # Store test data
             self.test_data['times'] = test_times
             self.test_data['pressures'] = test_pressures
-            
-            print()
-            print(f"Final pressure: {final_pressure:.4f} PSI")
-            print("✓ Test phase completed")
             return True
             
         except Exception as e:
@@ -251,9 +230,6 @@ class TerminalLeakTester:
     
     def _phase_exhaust(self) -> bool:
         """Phase 4: Exhaust DUT by opening exhaust valve."""
-        print(f"\n=== PHASE 4: EXHAUST ({self.exhaust_time}s) ===")
-        print("Opening exhaust valve...")
-        
         start_time = time.time()
         
         try:
@@ -266,9 +242,7 @@ class TerminalLeakTester:
             while (time.time() - start_time) < self.exhaust_time:
                 elapsed = time.time() - start_time
                 self._log_pressure("EXHAUSTING", elapsed)
-                time.sleep(0.5)
-            
-            print("✓ Exhaust phase completed")
+                time.sleep(0.2)  # High frequency monitoring (5 Hz)
             return True
             
         except Exception as e:
@@ -321,6 +295,10 @@ class TerminalLeakTester:
         print(f"\nStarting leak test at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print("Press Ctrl+C at any time to emergency stop")
         print()
+        
+        # Display table header for continuous pressure monitoring
+        print("Time     | Phase        | Elapsed | Pressure")
+        print("-" * 50)
         
         try:
             # Run test sequence
