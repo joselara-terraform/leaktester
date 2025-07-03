@@ -2,14 +2,16 @@
 """
 Terminal Leak Test Script
 
-Standalone leak tester that runs in terminal without pneumatic cylinders.
+Standalone leak tester that runs in terminal with full operational flow.
 Uses existing architecture and follows same process logic as full-scale tester.
 
 Test Sequence:
-1. Fill: Open fill valve
-2. Stabilize: Close fill valve  
-3. Test: Monitor pressure decay
-4. Exhaust: Open exhaust valve
+1. Extend Cylinders: Extend pneumatic cylinders
+2. Fill: Open fill valve
+3. Stabilize: Close fill valve  
+4. Test: Monitor pressure decay
+5. Exhaust: Open exhaust valve
+6. Retract Cylinders: Retract pneumatic cylinders
 
 Continuously outputs pressure and reports final metrics.
 """
@@ -24,13 +26,14 @@ import numpy as np
 # Import existing controllers
 from controllers.pressure_calibration import PressureCalibration
 from controllers.solenoid_valves import SolenoidValves
+from controllers.cylinders import Cylinders
 from controllers.relay_controller import RelayController
 from config.config_manager import get_config_manager
 
 class TerminalLeakTester:
     """
     Terminal-based leak tester using existing architecture.
-    Simplified test sequence without pneumatic cylinders.
+    Complete test sequence with full operational flow including cylinders.
     """
     
     def __init__(self):
@@ -47,6 +50,9 @@ class TerminalLeakTester:
             self.relay_controller = RelayController()
             self.solenoid_valves = SolenoidValves(self.relay_controller)
             
+            # Initialize cylinders
+            self.cylinders = Cylinders(self.relay_controller)
+            
             # Initialize pressure calibration
             self.pressure_calibration = PressureCalibration()
             
@@ -59,11 +65,13 @@ class TerminalLeakTester:
         # Load test configuration
         self.test_config = self.config_manager.get_test_config_for_runner()
         
-        # Test parameters (simplified for isolated testing)
+        # Test parameters (full operational flow)
+        self.cylinder_extend_time = self.test_config['cylinder_extend_time']
         self.fill_time = self.test_config['fill_time']
         self.stabilize_time = self.test_config['stabilize_time'] 
         self.test_duration = self.test_config['test_duration']
         self.exhaust_time = self.test_config['exhaust_time']
+        self.cylinder_retract_time = self.test_config['cylinder_retract_time']
         
         # Volume for leak rate calculation
         volume_config = self.config_manager.get_system_config('test_parameters')
@@ -83,22 +91,31 @@ class TerminalLeakTester:
         signal.signal(signal.SIGINT, self._signal_handler)
         
         print(f"✓ Test configuration loaded:")
+        print(f"  Cylinder extend time: {self.cylinder_extend_time}s")
         print(f"  Fill time: {self.fill_time}s")
         print(f"  Stabilize time: {self.stabilize_time}s") 
         print(f"  Test duration: {self.test_duration}s")
         print(f"  Exhaust time: {self.exhaust_time}s")
+        print(f"  Cylinder retract time: {self.cylinder_retract_time}s")
         print(f"  Test volume: {self.test_volume_cc} cc")
         print()
     
     def _signal_handler(self, signum, frame):
         """Handle Ctrl+C for clean shutdown."""
         print("\n\n=== Emergency Stop ===")
-        print("Stopping test and closing all valves...")
+        print("Stopping test, closing all valves, and retracting cylinders...")
         try:
             self.solenoid_valves.close_all_valves()
             print("✓ All valves closed safely")
         except Exception as e:
             print(f"✗ Error closing valves: {e}")
+        
+        try:
+            self.cylinders.retract(duration=2.0)  # Quick retract for safety
+            print("✓ Cylinders retracted safely")
+        except Exception as e:
+            print(f"✗ Error retracting cylinders: {e}")
+        
         print("Test terminated by user")
         sys.exit(0)
     
@@ -151,8 +168,30 @@ class TerminalLeakTester:
             print(f"⚠ Leak rate calculation error: {e}")
             return 0.0
     
+    def _phase_extend_cylinders(self) -> bool:
+        """Phase 1: Extend pneumatic cylinders."""
+        start_time = time.time()
+        
+        try:
+            # Extend cylinders
+            if not self.cylinders.extend(duration=self.cylinder_extend_time):
+                print("✗ Failed to extend cylinders")
+                return False
+            
+            # Monitor pressure during cylinder extension
+            while (time.time() - start_time) < self.cylinder_extend_time:
+                elapsed = time.time() - start_time
+                self._log_pressure("EXTENDING", elapsed)
+                time.sleep(0.2)  # High frequency monitoring (5 Hz)
+            
+            return True
+            
+        except Exception as e:
+            print(f"✗ Cylinder extension error: {e}")
+            return False
+    
     def _phase_fill(self) -> bool:
-        """Phase 1: Fill DUT by opening fill valve."""
+        """Phase 2: Fill DUT by opening fill valve."""
         start_time = time.time()
         
         try:
@@ -173,7 +212,7 @@ class TerminalLeakTester:
             return False
     
     def _phase_stabilize(self) -> bool:
-        """Phase 2: Stabilize pressure with all valves closed."""
+        """Phase 3: Stabilize pressure with all valves closed."""
         start_time = time.time()
         
         try:
@@ -194,7 +233,7 @@ class TerminalLeakTester:
             return False
     
     def _phase_test(self) -> bool:
-        """Phase 3: Test phase - monitor pressure decay."""
+        """Phase 4: Test phase - monitor pressure decay."""
         start_time = time.time()
         test_times = []
         test_pressures = []
@@ -229,7 +268,7 @@ class TerminalLeakTester:
             return False
     
     def _phase_exhaust(self) -> bool:
-        """Phase 4: Exhaust DUT by opening exhaust valve."""
+        """Phase 5: Exhaust DUT by opening exhaust valve."""
         start_time = time.time()
         
         try:
@@ -247,6 +286,28 @@ class TerminalLeakTester:
             
         except Exception as e:
             print(f"✗ Exhaust phase error: {e}")
+            return False
+    
+    def _phase_retract_cylinders(self) -> bool:
+        """Phase 6: Retract pneumatic cylinders."""
+        start_time = time.time()
+        
+        try:
+            # Retract cylinders
+            if not self.cylinders.retract(duration=self.cylinder_retract_time):
+                print("✗ Failed to retract cylinders")
+                return False
+            
+            # Monitor pressure during cylinder retraction
+            while (time.time() - start_time) < self.cylinder_retract_time:
+                elapsed = time.time() - start_time
+                self._log_pressure("RETRACTING", elapsed)
+                time.sleep(0.2)  # High frequency monitoring (5 Hz)
+            
+            return True
+            
+        except Exception as e:
+            print(f"✗ Cylinder retraction error: {e}")
             return False
     
     def _analyze_results(self):
@@ -301,7 +362,10 @@ class TerminalLeakTester:
         print("-" * 50)
         
         try:
-            # Run test sequence
+            # Run complete test sequence
+            if not self._phase_extend_cylinders():
+                return False
+            
             if not self._phase_fill():
                 return False
             
@@ -314,6 +378,9 @@ class TerminalLeakTester:
             if not self._phase_exhaust():
                 return False
             
+            if not self._phase_retract_cylinders():
+                return False
+            
             # Analyze results
             self._analyze_results()
             
@@ -324,13 +391,19 @@ class TerminalLeakTester:
             return False
         
         finally:
-            # Ensure all valves are closed
+            # Ensure all valves are closed and cylinders are retracted
             try:
-                print("\nClosing all valves...")
+                print("\nClosing all valves and retracting cylinders...")
                 self.solenoid_valves.close_all_valves()
                 print("✓ All valves closed safely")
             except Exception as e:
                 print(f"⚠ Error closing valves: {e}")
+            
+            try:
+                self.cylinders.retract(duration=2.0)  # Quick retract for safety
+                print("✓ Cylinders retracted safely")
+            except Exception as e:
+                print(f"⚠ Error retracting cylinders: {e}")
 
 def main():
     """Main entry point for terminal leak tester."""
